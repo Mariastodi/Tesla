@@ -46,6 +46,7 @@ const child = spawn(process.execPath, ["server.js"], {
     TEST_NOW: "2026-09-21T22:00:00Z",
     DATABASE_URL: "",
     ADMIN_PIN: "demo-admin-only",
+    ADMIN_PIN_HASH: "",
     CPF_SALT: "demo-only-secret-never-use-in-production",
     REQUIRE_DEVICE: "false",
   },

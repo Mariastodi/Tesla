@@ -6,7 +6,8 @@ import os from "node:os";
 import path from "node:path";
 import crypto from "node:crypto";
 
-const pin = "test-only-admin-secret";
+import { hashPin } from "../server/admin-auth.js";
+const pin = "87654321";
 const salt = "test-only-salt-32-characters-or-more";
 const cpf = "52998224725";
 const cpf2 = "11144477735";
@@ -115,7 +116,8 @@ before(async () => {
       TZ: "UTC",
       DATA_DIR: directory,
       DATABASE_URL: "",
-      ADMIN_PIN: pin,
+      ADMIN_PIN: "obsolete-admin-secret",
+      ADMIN_PIN_HASH: await hashPin(pin),
       CPF_SALT: salt,
       REQUIRE_DEVICE: "true",
     },
@@ -174,7 +176,7 @@ test("admin endpoints reject missing or wrong credentials", async () => {
   assert.equal(
     (
       await request("/api/admin/overview", undefined, {
-        "x-admin-pin": "wrong",
+        "x-admin-pin": "obsolete-admin-secret",
       })
     ).status,
     401,

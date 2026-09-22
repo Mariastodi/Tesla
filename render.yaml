@@ -15,8 +15,11 @@ services:
         value: 1
       - key: DATABASE_URL
         sync: false
+      # Keep the existing credential until ADMIN_PIN_HASH is configured privately.
       - key: ADMIN_PIN
         generateValue: true
+      - key: ADMIN_PIN_HASH
+        sync: false
       - key: CPF_SALT
         generateValue: true
       - key: DEVICE_SECRET

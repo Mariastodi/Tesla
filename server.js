@@ -1,4 +1,5 @@
 import express from "express";
+import { verifyPin } from "./server/admin-auth.js";
 import crypto from "node:crypto";
 import path from "node:path";
 import helmet from "helmet";
@@ -6,7 +7,7 @@ import rateLimit from "express-rate-limit";
 import {
   rootDir as __dirname,
   salt,
-  adminPin,
+  adminPinHash,
   production,
 } from "./server/config.js";
 import {
@@ -87,9 +88,13 @@ const sameSecret = (provided, expected) => {
     crypto.timingSafeEqual(received, stored)
   );
 };
-const requireAdmin = (req, res, next) => {
-  if (adminPin && sameSecret(req.headers["x-admin-pin"], adminPin))
-    return next();
+const requireAdmin = async (req, res, next) => {
+  try {
+    if (await verifyPin(req.headers["x-admin-pin"], adminPinHash))
+      return next();
+  } catch (error) {
+    return next(error);
+  }
   return res
     .status(401)
     .json({ error: "Acesso da coordenação não autorizado." });

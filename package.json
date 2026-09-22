@@ -10,7 +10,8 @@
     "start": "node server.js",
     "check": "node --check server.js && npm run build",
     "test": "node --test tests/*.test.js",
-    "format": "prettier --write client/src server.js server tests scripts"
+    "format": "prettier --write client/src server.js server tests scripts",
+    "hash:pin": "node scripts/hash-pin.js"
   },
   "engines": {
     "node": ">=22.12.0"

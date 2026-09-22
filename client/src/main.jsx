@@ -46,7 +46,7 @@ function Dialog({ title, children, onClose, className = "" }) {
       }}
     >
       <div className="dialog-top">
-        <span className="eyebrow">PROJETO TESLA</span>
+        <span className="eyebrow">TESLA</span>
         <button className="icon-button" aria-label="Fechar" onClick={onClose}>
           ×
         </button>
@@ -383,9 +383,9 @@ function App() {
         <section className="screen kiosk-screen">
           <header className="kiosk-header">
             <div className="brand">
-              <img src="/logo-tesla.png" alt="Projeto Tesla" />
+              <img src="/logo-tesla.png" alt="Tesla" />
               <div>
-                <strong>PROJETO TESLA</strong>
+                <strong>TESLA</strong>
                 <span>
                   {data.config.escola || "Instituto Tecnológico Tesla"}
                 </span>

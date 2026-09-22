@@ -1,4 +1,4 @@
-# Presença · Projeto Tesla
+# Presença · Tesla
 
 Totem de presença para a recepção do Instituto Tecnológico Tesla. Interface em React, com a identidade azul e branca da escola, tipografia Chivo e teclado adaptado para tablets.
 
@@ -20,7 +20,7 @@ npm run build
 npm start
 ```
 
-Preencha `ADMIN_PIN` e `CPF_SALT` no `.env`. Os arquivos reais da escola ficam em `dados/` e não são versionados. Uma instalação sem dados inicia vazia. Para trabalhar somente na interface, execute `npm run dev:ui` com o servidor em execução.
+Preencha `ADMIN_PIN_HASH` e `CPF_SALT` no `.env`. Gere o hash com `npm run hash:pin` e digite o código pelo terminal (a entrada fica oculta). Copie somente o hash para a variável privada `ADMIN_PIN_HASH` na hospedagem e remova a variável antiga `ADMIN_PIN`. Os arquivos reais da escola ficam em `dados/` e não são versionados. Uma instalação sem dados inicia vazia. Para trabalhar somente na interface, execute `npm run dev:ui` com o servidor em execução.
 
 ```sh
 npm run check
@@ -32,7 +32,7 @@ Os testes usam arquivos temporários e alunos fictícios, sem acessar a base da 
 
 ## Hospedagem
 
-O arquivo `render.yaml` configura um serviço Node no plano gratuito. Use PostgreSQL externo persistente; não use arquivos locais para armazenar presença no Render. Configure `DATABASE_URL`, `ADMIN_PIN` (12+ caracteres), `CPF_SALT` (32+ caracteres), `DEVICE_SECRET` e `TRUST_PROXY_HOPS=1`.
+O arquivo `render.yaml` configura um serviço Node no plano gratuito. Use PostgreSQL externo persistente; não use arquivos locais para armazenar presença no Render. Configure `DATABASE_URL`, `ADMIN_PIN_HASH` (hash scrypt de um código de 8 a 128 caracteres), `CPF_SALT` (32+ caracteres), `DEVICE_SECRET` e `TRUST_PROXY_HOPS=1`.
 
 A produção recusa inicializar sem banco e segredos adequados. Guarde `CPF_SALT` com o backup: trocar esse segredo impede reconhecer os CPFs já vinculados. A importação inicial só aceita uma base vazia e exige autenticação da coordenação. Dados pessoais nunca devem ser enviados ao GitHub.
 
@@ -40,6 +40,7 @@ O plano gratuito do Render pode suspender o serviço após inatividade e demorar
 
 ## Segurança e limites
 
+- Código da coordenação protegido por scrypt com salt aleatório, verificado apenas no servidor. O hash tem prioridade sobre a variável legada `ADMIN_PIN`; o valor legado continua aceito para permitir migração. Use HTTPS em produção.
 - CPF armazenado como HMAC-SHA256; o número puro não é persistido.
 - Respostas do totem limitadas aos campos necessários, sem telefone ou hash.
 - Operações isoladas e gravação atômica; PostgreSQL usa transação e bloqueio entre instâncias.
