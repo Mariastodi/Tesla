@@ -1,0 +1,23 @@
+services:
+  - type: web
+    name: projeto-tesla
+    runtime: node
+    plan: free
+    buildCommand: npm ci --include=dev && npm run build
+    startCommand: npm start
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: NODE_VERSION
+        value: 22.14.0
+      - key: TRUST_PROXY_HOPS
+        value: 1
+      - key: DATABASE_URL
+        sync: false
+      - key: ADMIN_PIN
+        sync: false
+      - key: CPF_SALT
+        sync: false
+      - key: DEVICE_SECRET
+        generateValue: true

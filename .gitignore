@@ -1,0 +1,14 @@
+node_modules/
+public/
+.env
+.env.*
+!.env.example
+dados/
+backups/
+.private/
+artifacts/
+.DS_Store
+*.log
+# Original local handover notes may contain legacy access details.
+LEIA-ME.md
+RELATORIO-IMPLEMENTACAO.md
