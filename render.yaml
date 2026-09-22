@@ -16,8 +16,8 @@ services:
       - key: DATABASE_URL
         sync: false
       - key: ADMIN_PIN
-        sync: false
+        generateValue: true
       - key: CPF_SALT
-        sync: false
+        generateValue: true
       - key: DEVICE_SECRET
         generateValue: true
