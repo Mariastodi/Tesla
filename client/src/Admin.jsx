@@ -1,3 +1,4 @@
+import { TeacherAttendancePanel } from "./TeacherAttendancePanel";
 import { useState, useId, cloneElement } from "react";
 import { api } from "./api";
 const csvCell = (value) => {
@@ -20,6 +21,7 @@ export function Admin({ data, pin, tab, onTab, onBack, onConfig, onData }) {
     frequencia: "Frequência",
     alunos: "Alunos",
     professores: "Professores",
+    ponto: "Ponto dos professores",
     turmas: "Turmas e grade",
     ajustes: "Ajustes",
   };
@@ -59,6 +61,8 @@ export function Admin({ data, pin, tab, onTab, onBack, onConfig, onData }) {
   );
 }
 function AdminContent({ data, pin, tab, onConfig, onData }) {
+  if (tab === "ponto")
+    return <TeacherAttendancePanel data={data} pin={pin} onConfig={onConfig} />;
   if (tab === "frequencia") return <Frequency data={data} />;
   if (tab === "alunos")
     return <StudentRegister data={data} pin={pin} onData={onData} />;
@@ -397,7 +401,9 @@ function CrudTeachers({ data, pin, onData }) {
               <input
                 required={!editing}
                 inputMode="numeric"
-                disabled={Boolean(editing)}
+                placeholder={
+                  editing ? "Preencha para cadastrar ou corrigir o CPF" : ""
+                }
                 value={form.cpf}
                 onChange={(event) =>
                   setForm({ ...form, cpf: event.target.value })
@@ -473,9 +479,7 @@ function CrudClasses({ data, pin, onData }) {
     curso: "",
     professorId: "",
     sala: "",
-    dia: "1",
-    inicio: "18:30",
-    fim: "21:30",
+    horarios: [{ dia: 1, inicio: "18:30", fim: "21:30" }],
     dataInicio: new Intl.DateTimeFormat("en-CA", {
       timeZone: "America/Fortaleza",
     }).format(new Date()),
@@ -493,9 +497,9 @@ function CrudClasses({ data, pin, onData }) {
       curso: item.curso || "",
       professorId: item.professorId || "",
       sala: item.sala || "",
-      dia: String(item.horarios?.[0]?.dia ?? 1),
-      inicio: item.horarios?.[0]?.inicio || "18:30",
-      fim: item.horarios?.[0]?.fim || "21:30",
+      horarios: (item.horarios?.length ? item.horarios : empty.horarios).map(
+        (h) => ({ ...h }),
+      ),
       dataInicio: item.inicio || empty.dataInicio,
       dataFim: item.fim || "",
     });
@@ -587,40 +591,6 @@ function CrudClasses({ data, pin, onData }) {
                 }
               />
             </Field>
-            <Field label="Dia">
-              <select
-                value={form.dia}
-                onChange={(event) =>
-                  setForm({ ...form, dia: event.target.value })
-                }
-              >
-                {days.map((day, index) => (
-                  <option key={day} value={index}>
-                    {day}
-                  </option>
-                ))}
-              </select>
-            </Field>
-            <Field label="Início">
-              <input
-                type="time"
-                required
-                value={form.inicio}
-                onChange={(event) =>
-                  setForm({ ...form, inicio: event.target.value })
-                }
-              />
-            </Field>
-            <Field label="Fim">
-              <input
-                type="time"
-                required
-                value={form.fim}
-                onChange={(event) =>
-                  setForm({ ...form, fim: event.target.value })
-                }
-              />
-            </Field>
             <Field label="Data de início">
               <input
                 type="date"
@@ -632,6 +602,83 @@ function CrudClasses({ data, pin, onData }) {
               />
             </Field>
           </div>
+          <fieldset className="schedule-editor">
+            <legend>Horários da turma</legend>
+            {form.horarios.map((schedule, index) => (
+              <div className="form-grid" key={index}>
+                <Field label="Dia">
+                  <select
+                    value={schedule.dia}
+                    onChange={(e) =>
+                      setForm({
+                        ...form,
+                        horarios: form.horarios.map((h, i) =>
+                          i === index
+                            ? { ...h, dia: Number(e.target.value) }
+                            : h,
+                        ),
+                      })
+                    }
+                  >
+                    {days.map((day, i) => (
+                      <option key={day} value={i}>
+                        {day}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+                {["inicio", "fim"].map((key) => (
+                  <Field
+                    key={key}
+                    label={key === "inicio" ? "Início da aula" : "Fim da aula"}
+                  >
+                    <input
+                      type="time"
+                      required
+                      value={schedule[key]}
+                      onChange={(e) =>
+                        setForm({
+                          ...form,
+                          horarios: form.horarios.map((h, i) =>
+                            i === index ? { ...h, [key]: e.target.value } : h,
+                          ),
+                        })
+                      }
+                    />
+                  </Field>
+                ))}
+                <button
+                  className="text-button"
+                  type="button"
+                  disabled={form.horarios.length === 1}
+                  onClick={() =>
+                    setForm({
+                      ...form,
+                      horarios: form.horarios.filter((_, i) => i !== index),
+                    })
+                  }
+                >
+                  Remover horário
+                </button>
+              </div>
+            ))}
+            <button
+              className="text-button"
+              type="button"
+              disabled={form.horarios.length >= 30}
+              onClick={() =>
+                setForm({
+                  ...form,
+                  horarios: [
+                    ...form.horarios,
+                    { dia: 1, inicio: "18:30", fim: "21:30" },
+                  ],
+                })
+              }
+            >
+              Adicionar horário
+            </button>
+          </fieldset>
           <br />
           <button className="primary" type="submit">
             {editing ? "Salvar alterações" : "Cadastrar turma"}

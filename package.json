@@ -18,6 +18,7 @@
   },
   "dependencies": {
     "dotenv": "^16.4.7",
+    "exceljs": "^4.4.0",
     "express": "^4.21.2",
     "express-rate-limit": "^8.7.0",
     "helmet": "^8.3.0",
@@ -30,5 +31,10 @@
     "@vitejs/plugin-react": "^6.1.1",
     "prettier": "^3.9.8",
     "vite": "^8.3.0"
+  },
+  "overrides": {
+    "exceljs": {
+      "uuid": "11.1.1"
+    }
   }
 }

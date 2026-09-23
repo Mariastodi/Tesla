@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, lazy, Suspense } from "react";
 import { createRoot } from "react-dom/client";
 import { api } from "./api";
 import "./styles.css";
+import { CpfEntry } from "./CpfEntry";
 const Admin = lazy(() =>
   import("./Admin").then((module) => ({ default: module.Admin })),
 );
@@ -9,10 +10,6 @@ const onlyDigits = (value) =>
   String(value || "")
     .replace(/\D/g, "")
     .slice(0, 11);
-const cpfMask = (value) => {
-  let i = 0;
-  return "___.___.___-__".replace(/_/g, () => value[i++] || "_");
-};
 const initialData = {
   config: {},
   alunos: [],
@@ -158,6 +155,7 @@ function App() {
     setModal(null);
     setPin("");
     setLoginError("");
+    setScreen((current) => (current === "teacher" ? "kiosk" : current));
   };
   useEffect(() => {
     let active = true;
@@ -183,9 +181,14 @@ function App() {
     };
   }, []);
   useEffect(() => {
-    if (!modal || !["registered", "already", "linked"].includes(modal.kind))
+    if (
+      !modal ||
+      !["registered", "already", "linked", "teacher-success"].includes(
+        modal.kind,
+      )
+    )
       return;
-    const timer = setTimeout(reset, 5500);
+    const timer = setTimeout(reset, data.config.successScreenMs || 5500);
     return () => clearTimeout(timer);
   }, [modal]);
   useEffect(() => {
@@ -213,7 +216,7 @@ function App() {
   useEffect(() => {
     const handleKey = (event) => {
       if (
-        screen !== "kiosk" ||
+        !["kiosk", "teacher"].includes(screen) ||
         modal ||
         busy ||
         (/INPUT|TEXTAREA|SELECT/.test(event.target.tagName) &&
@@ -261,7 +264,7 @@ function App() {
       kind: result.state,
       title:
         result.state === "registered"
-          ? "Presença confirmada!"
+          ? "Presença computada!"
           : "Você já registrou presença",
       detail: result.student.nome,
       session: result.session,
@@ -299,6 +302,7 @@ function App() {
   }
   function confirm() {
     if (cpf.length !== 11) return;
+    if (screen === "teacher") return confirmTeacher();
     run(async () => {
       if (selected)
         return handleSessions(
@@ -316,6 +320,36 @@ function App() {
         return;
       }
       return handleSessions(result);
+    });
+  }
+  const teacherRequest = useRef(null);
+  function confirmTeacher(sessionId) {
+    const signature = `${cpf}:${sessionId || ""}`;
+    if (teacherRequest.current?.signature !== signature)
+      teacherRequest.current = { signature, id: crypto.randomUUID() };
+    run(async () => {
+      const result = await post("/api/kiosk/teacher-attendance", {
+        cpf,
+        sessionId,
+        requestId: teacherRequest.current.id,
+      });
+      if (result.state === "choose") {
+        setModal({
+          kind: "teacher-choose",
+          title: "Qual aula você está registrando?",
+          options: result.options,
+        });
+        return;
+      }
+      teacherRequest.current = null;
+      setCpf("");
+      setModal({
+        kind:
+          result.state === "registered" ? "teacher-success" : "teacher-info",
+        title: result.message,
+        detail: result.teacher?.nome,
+        record: result.record,
+      });
     });
   }
   async function login(event) {
@@ -380,7 +414,9 @@ function App() {
           />
         </Suspense>
       ) : (
-        <section className="screen kiosk-screen">
+        <section
+          className={`screen kiosk-screen ${["registered", "teacher-success"].includes(modal?.kind) ? "success-screen" : ""}`}
+        >
           <header className="kiosk-header">
             <div className="brand">
               <img src="/logo-tesla.png" alt="Tesla" />
@@ -397,104 +433,92 @@ function App() {
             </div>
           </header>
           <main className="kiosk-main">
-            {connection !== "ready" && (
-              <p className="connection-notice" role="status">
-                {connection === "loading"
-                  ? "Conectando…"
-                  : "Sem conexão. Aguarde para registrar sua presença."}
-              </p>
+            {["registered", "teacher-success"].includes(modal?.kind) ? (
+              <section className="success-content" role="status">
+                <div className="success-check" aria-hidden="true">
+                  ✓
+                </div>
+                <h1>{modal.title}</h1>
+                <p>{modal.detail}</p>
+                {modal.kind === "registered" && (
+                  <p>Sua presença foi registrada com sucesso.</p>
+                )}
+                {modal.record && (
+                  <>
+                    <p>{modal.record.turmaNome}</p>
+                    <p>
+                      Aula: {modal.record.horarioInicioPrevisto} às{" "}
+                      {modal.record.horarioFimPrevisto}
+                    </p>
+                    <p>
+                      Entrada: {modal.record.entradaHora}
+                      {modal.record.saidaHora
+                        ? ` · Saída: ${modal.record.saidaHora}`
+                        : ""}
+                    </p>
+                  </>
+                )}
+                <button className="text-button" onClick={reset}>
+                  Voltar ao início
+                </button>
+                <p className="hint">A tela inicial volta em alguns segundos.</p>
+              </section>
+            ) : (
+              <>
+                {connection !== "ready" && (
+                  <p className="connection-notice" role="status">
+                    {connection === "loading"
+                      ? "Conectando…"
+                      : "Sem conexão. Aguarde para registrar sua presença."}
+                  </p>
+                )}
+                {!deviceReady && (
+                  <div className="device-notice" role="status">
+                    <strong>Ative este tablet para começar.</strong>
+                    <span>
+                      A coordenação informa o código uma vez para liberar o uso
+                      por 30 dias.
+                    </span>
+                    <button
+                      className="text-button"
+                      onClick={() => {
+                        reset();
+                        setModal({ kind: "admin" });
+                      }}
+                    >
+                      Ativar tablet
+                    </button>
+                  </div>
+                )}
+                <div className="welcome">
+                  <h1>
+                    {screen === "teacher"
+                      ? "Registro de ponto do professor"
+                      : selected
+                        ? "Cadastre seu CPF"
+                        : "Registre sua presença"}
+                  </h1>
+                  <p>
+                    {selected ? selected.nome : "Digite seu CPF e confirme."}
+                  </p>
+                </div>
+                <CpfEntry
+                  value={cpf}
+                  onChange={setCpf}
+                  onCancel={reset}
+                  onConfirm={confirm}
+                  busy={busy}
+                  disabled={connection !== "ready" || !deviceReady}
+                  label={
+                    screen === "teacher"
+                      ? "Confirmar ponto"
+                      : selected
+                        ? "Cadastrar e continuar"
+                        : "Confirmar presença"
+                  }
+                />
+              </>
             )}
-            {!deviceReady && (
-              <div className="device-notice" role="status">
-                <strong>Ative este tablet para começar.</strong>
-                <span>
-                  A coordenação informa o código uma vez para liberar o uso por
-                  30 dias.
-                </span>
-                <button
-                  className="text-button"
-                  onClick={() => {
-                    reset();
-                    setModal({ kind: "admin" });
-                  }}
-                >
-                  Ativar tablet
-                </button>
-              </div>
-            )}
-            <div className="welcome">
-              <h1>{selected ? "Cadastre seu CPF" : "Registre sua presença"}</h1>
-              <p>{selected ? selected.nome : "Digite seu CPF e confirme."}</p>
-            </div>
-            <section className="entry" aria-label="Registro de presença">
-              <label className="sr-only" htmlFor="cpf">
-                {selected ? `CPF de ${selected.nome}` : "Digite seu CPF"}
-              </label>
-              <input
-                id="cpf"
-                className="cpf-display"
-                inputMode="none"
-                autoComplete="off"
-                spellCheck="false"
-                aria-describedby="cpf-help"
-                placeholder="___.___.___-__"
-                value={cpfMask(cpf)}
-                onChange={(event) => setCpf(onlyDigits(event.target.value))}
-                readOnly
-              />
-              <span id="cpf-help" className="sr-only">
-                Use o teclado abaixo para digitar os 11 números.
-              </span>
-              <div className="keypad">
-                {["1", "2", "3", "4", "5", "6", "7", "8", "9"].map((value) => (
-                  <button
-                    className="key"
-                    key={value}
-                    disabled={busy}
-                    onClick={() =>
-                      setCpf((current) => onlyDigits(current + value))
-                    }
-                  >
-                    {value}
-                  </button>
-                ))}
-                <button
-                  className="key action"
-                  onClick={() => setCpf((current) => current.slice(0, -1))}
-                  disabled={busy}
-                  aria-label="Apagar último número"
-                >
-                  ⌫
-                </button>
-                <button
-                  className="key"
-                  disabled={busy}
-                  onClick={() => setCpf((current) => onlyDigits(current + "0"))}
-                >
-                  0
-                </button>
-                <button className="key action" disabled={busy} onClick={reset}>
-                  Cancelar
-                </button>
-              </div>
-              <button
-                className="confirm-button"
-                disabled={
-                  busy ||
-                  cpf.length !== 11 ||
-                  connection !== "ready" ||
-                  !deviceReady
-                }
-                onClick={confirm}
-              >
-                {busy
-                  ? "Conferindo…"
-                  : selected
-                    ? "Cadastrar e continuar"
-                    : "Confirmar presença"}
-                <span aria-hidden="true">→</span>
-              </button>
-            </section>
           </main>
           <footer className="kiosk-footer">
             <button
@@ -503,10 +527,22 @@ function App() {
               onClick={() => {
                 setCpf("");
                 setSelected(null);
+                setScreen("kiosk");
                 setModal({ kind: "first" });
               }}
             >
               {selected ? "Trocar aluno" : "Primeiro acesso"}
+            </button>
+            <button
+              className="staff-button"
+              disabled={!deviceReady || busy}
+              onClick={() => {
+                reset();
+                teacherRequest.current = null;
+                setScreen("teacher");
+              }}
+            >
+              Professor
             </button>
             <button
               className="staff-button"
@@ -566,70 +602,84 @@ function App() {
           </form>
         </Dialog>
       )}
-      {modal && !["first", "admin"].includes(modal.kind) && (
-        <Dialog
-          title={modal.title}
-          onClose={reset}
-          className={`result ${modal.kind}`}
-        >
-          {modal.kind !== "unknown" && (
-            <div className="result-symbol" aria-hidden="true">
-              {modal.kind === "registered"
-                ? "✓"
-                : modal.kind === "error"
-                  ? "!"
-                  : "•"}
-            </div>
-          )}
-          <p aria-live="polite">{modal.detail}</p>
-          {modal.session && (
-            <div className="session-summary">
-              <strong>
-                {modal.session.turma.curso || modal.session.turma.nome}
-              </strong>
-              <span>
-                {modal.session.inicio} – {modal.session.fim}
-                {modal.session.turma.sala
-                  ? ` · ${modal.session.turma.sala}`
-                  : ""}
-              </span>
-            </div>
-          )}
-          {modal.sessions?.map((session) => (
-            <button
-              className="student-result"
-              disabled={busy}
-              key={session.id}
-              onClick={() =>
-                run(async () =>
-                  showResult(
-                    await post("/api/kiosk/checkin", {
-                      cpf,
-                      sessionId: session.id,
-                    }),
-                  ),
-                )
-              }
-            >
-              {session.turma.curso || session.turma.nome} · {session.inicio}
+      {modal &&
+        !["first", "admin", "registered", "teacher-success"].includes(
+          modal.kind,
+        ) && (
+          <Dialog
+            title={modal.title}
+            onClose={reset}
+            className={`result ${modal.kind}`}
+          >
+            {modal.kind !== "unknown" && (
+              <div className="result-symbol" aria-hidden="true">
+                {modal.kind === "registered"
+                  ? "✓"
+                  : modal.kind === "error"
+                    ? "!"
+                    : "•"}
+              </div>
+            )}
+            <p aria-live="polite">{modal.detail}</p>
+            {modal.session && (
+              <div className="session-summary">
+                <strong>
+                  {modal.session.turma.curso || modal.session.turma.nome}
+                </strong>
+                <span>
+                  {modal.session.inicio} – {modal.session.fim}
+                  {modal.session.turma.sala
+                    ? ` · ${modal.session.turma.sala}`
+                    : ""}
+                </span>
+              </div>
+            )}
+            {modal.options?.map((option) => (
+              <button
+                className="student-result"
+                key={option.id}
+                disabled={busy}
+                onClick={() => confirmTeacher(option.id)}
+              >
+                {option.turmaNome} · {option.inicio}–{option.fim} ·{" "}
+                {option.action === "exit" ? "Saída" : "Entrada"}
+              </button>
+            ))}
+            {modal.sessions?.map((session) => (
+              <button
+                className="student-result"
+                disabled={busy}
+                key={session.id}
+                onClick={() =>
+                  run(async () =>
+                    showResult(
+                      await post("/api/kiosk/checkin", {
+                        cpf,
+                        sessionId: session.id,
+                      }),
+                    ),
+                  )
+                }
+              >
+                {session.turma.curso || session.turma.nome} · {session.inicio}
+              </button>
+            ))}
+            {modal.kind === "unknown" && (
+              <button
+                className="confirm-button"
+                onClick={() => setModal({ kind: "first" })}
+              >
+                Encontrar meu nome
+              </button>
+            )}
+            <button className="text-button" onClick={reset}>
+              Voltar ao início
             </button>
-          ))}
-          {modal.kind === "unknown" && (
-            <button
-              className="confirm-button"
-              onClick={() => setModal({ kind: "first" })}
-            >
-              Encontrar meu nome
-            </button>
-          )}
-          <button className="text-button" onClick={reset}>
-            Voltar ao início
-          </button>
-          {["registered", "already", "linked"].includes(modal.kind) && (
-            <p className="hint">A tela inicial volta em alguns segundos.</p>
-          )}
-        </Dialog>
-      )}
+            {["registered", "already", "linked"].includes(modal.kind) && (
+              <p className="hint">A tela inicial volta em alguns segundos.</p>
+            )}
+          </Dialog>
+        )}
     </>
   );
 }

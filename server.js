@@ -1,3 +1,6 @@
+import { validatedSchedules } from "./server/schedules.js";
+import { registerTeacherRoutes } from "./server/teacher-routes.js";
+import { startSheetSync } from "./server/sheet-sync.js";
 import express from "express";
 import { verifyPin } from "./server/admin-auth.js";
 import crypto from "node:crypto";
@@ -159,6 +162,7 @@ routes.get("/api/bootstrap", async (req, res) => {
         tolAntes: store.config.tolAntes,
         tolDepois: store.config.tolDepois,
         inicioControle: store.config.inicioControle,
+        successScreenMs: store.config.successScreenMs || 5500,
       },
       now: now().toISOString(),
     });
@@ -427,18 +431,8 @@ routes.post(
     const teacher = (store.professores || []).find(
       (item) => item.id === req.body.professorId && item.ativo !== false,
     );
-    const weekday = Number(req.body.dia);
-    if (
-      !code ||
-      !course ||
-      !teacher ||
-      !Number.isInteger(weekday) ||
-      weekday < 0 ||
-      weekday > 6 ||
-      !/^([01]\d|2[0-3]):[0-5]\d$/.test(req.body.inicio) ||
-      !/^([01]\d|2[0-3]):[0-5]\d$/.test(req.body.fim) ||
-      minutes(req.body.fim) <= minutes(req.body.inicio)
-    )
+    const horarios = validatedSchedules(req.body);
+    if (!code || !course || !teacher || !horarios)
       return res.status(422).json({
         error:
           "Preencha código, curso, professor, dia e horários corretamente.",
@@ -458,7 +452,7 @@ routes.post(
       fim: String(req.body.dataFim || ""),
       ativa: true,
       canceladas: [],
-      horarios: [{ dia: weekday, inicio: req.body.inicio, fim: req.body.fim }],
+      horarios,
     };
     store.turmas.push(classItem);
     await writeStore(store);
@@ -494,6 +488,22 @@ routes.put(
       return res
         .status(409)
         .json({ error: "Já existe um professor ativo com esse nome." });
+    const cpf = onlyDigits(req.body.cpf);
+    if (cpf) {
+      if (!validCpf(cpf))
+        return res.status(422).json({ error: "CPF inválido." });
+      if (
+        store.professores.some(
+          (item) => item.id !== teacher.id && matchesCpf(item, cpf),
+        )
+      )
+        return res
+          .status(409)
+          .json({ error: "Este CPF já está vinculado a outro professor." });
+      teacher.cpfHash = hashCpf(cpf);
+      teacher.vinculo = "verificado";
+      teacher.vinculoEm = Date.now();
+    }
     teacher.nome = name;
     store.turmas = store.turmas.map((item) =>
       item.professorId === teacher.id ? { ...item, professor: name } : item,
@@ -540,19 +550,10 @@ routes.put(
       (item) => item.id === req.body.professorId && item.ativo !== false,
     );
     const course = String(req.body.curso || "").trim();
-    const weekday = Number(req.body.dia);
+    const horarios = validatedSchedules(req.body);
     if (!classItem)
       return res.status(404).json({ error: "Turma não encontrada." });
-    if (
-      !course ||
-      !teacher ||
-      !Number.isInteger(weekday) ||
-      weekday < 0 ||
-      weekday > 6 ||
-      !/^([01]\d|2[0-3]):[0-5]\d$/.test(req.body.inicio) ||
-      !/^([01]\d|2[0-3]):[0-5]\d$/.test(req.body.fim) ||
-      minutes(req.body.fim) <= minutes(req.body.inicio)
-    )
+    if (!course || !teacher || !horarios)
       return res.status(422).json({
         error: "Preencha curso, professor, dia e horários corretamente.",
       });
@@ -564,7 +565,7 @@ routes.put(
       sala: String(req.body.sala || ""),
       inicio: String(req.body.dataInicio || classItem.inicio),
       fim: String(req.body.dataFim || classItem.fim || ""),
-      horarios: [{ dia: weekday, inicio: req.body.inicio, fim: req.body.fim }],
+      horarios,
     });
     await writeStore(store);
     return res.json({ turma: classItem });
@@ -734,6 +735,13 @@ routes.post(
     });
   },
 );
+registerTeacherRoutes({
+  app,
+  routes,
+  requireAdmin,
+  adminLimiter,
+  kioskLimiter,
+});
 app.use("/api", (_req, res) =>
   res.status(404).json({ error: "Rota não encontrada." }),
 );
@@ -760,6 +768,7 @@ routes.get("*", (_req, res) =>
 
 repositoryReady
   .then(() => {
+    startSheetSync();
     const listener = app.listen(port, () =>
       console.log(
         `Presença Tesla em http://localhost:${listener.address().port}`,
@@ -768,5 +777,6 @@ repositoryReady
   })
   .catch((error) => {
     console.error("Não foi possível iniciar o banco de dados.");
+    console.error(error);
     process.exit(1);
   });

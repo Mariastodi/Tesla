@@ -13,9 +13,14 @@ services:
         value: 22.14.0
       - key: TRUST_PROXY_HOPS
         value: 1
+
+      - key: GOOGLE_APPS_SCRIPT_URL
+        sync: false
+      - key: SHEET_SYNC_INTERVAL_MS
+        value: "60000"
+
       - key: DATABASE_URL
         sync: false
-      # Keep the existing credential until ADMIN_PIN_HASH is configured privately.
       - key: ADMIN_PIN
         generateValue: true
       - key: ADMIN_PIN_HASH

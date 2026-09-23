@@ -1075,3 +1075,169 @@ th {
     font-size: 13px;
   }
 }
+/* Large touch targets, sized to the available tablet height. */
+.kiosk-main {
+  width: min(100%, 860px);
+  max-width: 860px;
+  gap: clamp(16px, 2.5dvh, 34px);
+  padding: clamp(16px, 3dvh, 36px) clamp(18px, 4vw, 48px);
+}
+.kiosk-main .entry {
+  max-width: 720px;
+  width: 100%;
+}
+.kiosk-main .welcome h1 {
+  font-size: clamp(28px, 4.5vw, 46px);
+  line-height: 1.15;
+}
+.kiosk-main .welcome p {
+  font-size: clamp(17px, 2.5vw, 23px);
+}
+.kiosk-main .cpf-display {
+  height: clamp(76px, 9dvh, 118px);
+  font-size: clamp(29px, 5.5vw, 52px);
+  margin-bottom: clamp(12px, 1.6dvh, 22px);
+}
+.kiosk-main .keypad {
+  gap: clamp(10px, 1.4dvh, 18px);
+}
+.kiosk-main .key {
+  min-height: clamp(64px, 9dvh, 128px);
+  font-size: clamp(30px, 4vw, 44px);
+  font-weight: 600;
+}
+.kiosk-main .key.action {
+  font-size: clamp(15px, 2.3vw, 22px);
+}
+.kiosk-main .key.action[aria-label] {
+  font-size: 34px;
+}
+.kiosk-main .confirm-button {
+  min-height: clamp(62px, 7.5dvh, 92px);
+  font-size: clamp(17px, 2.5vw, 23px);
+}
+.kiosk-footer {
+  gap: clamp(4px, 3vw, 36px);
+  flex-wrap: wrap;
+}
+.kiosk-footer button {
+  font-size: clamp(14px, 2vw, 19px);
+}
+.success-screen {
+  background: #087b50;
+}
+.success-screen .kiosk-main {
+  flex: 1;
+  justify-content: center;
+}
+.success-content {
+  width: 100%;
+  text-align: center;
+  color: white;
+  padding: 24px 0;
+}
+.success-content h1 {
+  font-size: clamp(36px, 6vw, 64px);
+  line-height: 1.1;
+}
+.success-content p {
+  color: white;
+  font-size: clamp(20px, 3vw, 28px);
+}
+.success-check {
+  font-size: clamp(70px, 12vw, 130px);
+  line-height: 1.1;
+}
+.success-content .text-button {
+  color: white;
+  background: #ffffff20;
+  border: 1px solid #ffffff70;
+  min-height: 56px;
+}
+.success-screen .brand span,
+.success-screen .clock span,
+.success-screen .kiosk-footer button {
+  color: white;
+}
+@media (orientation: landscape) and (max-height: 850px) and (min-width: 800px) {
+  .kiosk-main {
+    max-width: 1220px;
+    width: 100%;
+    flex-direction: row;
+    gap: 32px;
+  }
+  .kiosk-main .welcome {
+    flex: 0 1 36%;
+    text-align: left;
+  }
+  .kiosk-main .entry {
+    flex: 1;
+  }
+  .kiosk-main .key {
+    min-height: clamp(48px, 8dvh, 70px);
+  }
+  .kiosk-main .cpf-display {
+    height: 64px;
+  }
+  .kiosk-main .confirm-button {
+    min-height: 54px;
+  }
+  .kiosk-header {
+    padding-top: 12px;
+    padding-bottom: 12px;
+  }
+  .kiosk-main:has(.device-notice),
+  .kiosk-main:has(.connection-notice) {
+    flex-wrap: wrap;
+  }
+}
+@media (max-width: 480px) {
+  .kiosk-main {
+    padding: 16px;
+    gap: 16px;
+  }
+  .kiosk-main .key {
+    min-height: clamp(52px, 8dvh, 76px);
+  }
+  .kiosk-main .cpf-display {
+    height: 66px;
+  }
+  .kiosk-footer {
+    padding-left: 4px;
+    padding-right: 4px;
+    gap: 0;
+  }
+  .kiosk-footer button {
+    padding: 10px;
+    font-size: 13px;
+  }
+}
+.point-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin: 20px 0;
+}
+.point-actions a {
+  color: var(--blue);
+}
+.substitution-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  border-top: 1px solid var(--line);
+  padding: 16px 0;
+  margin-top: 16px;
+}
+.schedule-editor {
+  margin: 20px 0;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+.schedule-editor .form-grid {
+  margin-bottom: 16px;
+  align-items: end;
+}

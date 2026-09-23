@@ -61,3 +61,34 @@ O primeiro acesso é uma autodeclaração num tablet autorizado. A validação m
 - `scripts/`: ferramentas de operação.
 
 Nenhuma marca ou etiqueta de ferramenta de desenvolvimento aparece na interface.
+
+## Ponto dos professores
+
+No totem, toque **Professor**, digite o CPF e confirme. Cadastre o CPF de cada professor em **Coordenação → Professores → Editar** antes do primeiro uso. O servidor determina a aula e registra entrada ou saída; em horários ambíguos, solicita a escolha da aula. Aulas em dois períodos têm registros independentes. A grade da turma aceita vários dias e horários.
+
+Por padrão, a entrada abre 30 minutos antes, a saída abre 60 minutos antes do fim e fecha 60 minutos depois. Repetições dentro de 5 minutos não viram saída. A coordenação pode ajustar esses valores em **Ponto dos professores**. O identificador de cada tentativa impede duplicar registros ao repetir uma requisição após falha de rede. Não existe saída sem entrada; após a janela permitida, procure a coordenação.
+
+Agende substituições por data e aula no painel de ponto. O titular permanece na grade; o registro guarda separadamente quem estava previsto e quem compareceu. Uma aula com ponto não permite alterar sua substituição. Registros feitos preservam nomes e horários da ocasião.
+
+A confirmação ocupa a tela em verde e retorna automaticamente ao início (padrão: 5,5 segundos). O teclado se adapta ao tablet em pé ou deitado. O fluxo dos alunos continua separado.
+
+### Persistência, relatórios e migração
+
+A migração `server/migrations/001_teacher_workflow.sql` roda automaticamente ao iniciar com PostgreSQL. Ela acrescenta a tabela de ponto, substituições e estado da sincronização sem apagar alunos, turmas ou presenças. Faça backup antes de atualizar a produção. Gravações são transacionais e serializadas entre instâncias; falha na planilha não desfaz o ponto.
+
+**Baixar Excel** gera seis abas com datas/horários numéricos, filtros, cabeçalhos fixos e durações. O intervalo máximo é 93 dias. Horas realizadas exigem entrada e saída. “Sem registro” indica ausência de ponto, não falta confirmada. Não há cálculo salarial. Aulas sem ponto usam a grade atual e só aparecem a partir da ativação do recurso; o sistema não inventa faltas históricas.
+
+### Google Planilhas
+
+Planilha preparada: https://docs.google.com/spreadsheets/d/18dbQrczPuRkr3CG5mTHduJ159YJFGFMv_QLAcuAraf4/edit
+
+Para ativar a integração no Render:
+
+1. No Google Cloud, habilite Google Sheets API em um projeto e crie uma conta de serviço dedicada. Não conceda papéis de administrador do projeto.
+2. Crie uma chave JSON dessa conta, mantenha o arquivo privado e compartilhe somente a planilha de destino com o `client_email`, como editor.
+3. Em Environment do Render, configure `GOOGLE_SHEET_ID` com o ID da planilha, `GOOGLE_SERVICE_ACCOUNT_EMAIL` com `client_email` e `GOOGLE_PRIVATE_KEY` com `private_key`. A chave aceita quebras reais ou `\n`. Nunca coloque o JSON, a chave, CPFs ou dados escolares no GitHub.
+4. Reinicie o serviço e use **Tentar sincronizar** no painel. Confira o horário da última sincronização e uma aula real nas abas REGISTROS/RESUMO.
+
+Sem essas credenciais, o painel informa que a integração não está configurada; o ponto e a exportação Excel continuam funcionando. O aplicativo não reutiliza a autorização do conector do assistente.
+
+O servidor sincroniza periodicamente (60 segundos por padrão). Falhas são persistidas com tentativas posteriores e espera crescente até 15 minutos. A planilha online conserva todos os pontos registrados; o resumo cobre o mês atual até hoje. Somente as seis abas gerenciadas são reescritas: crie outra aba para anotações. CPFs e seus hashes nunca são exportados. O banco é a fonte dos dados; alterações manuais nas abas gerenciadas serão substituídas. Se o Render gratuito estiver suspenso, a sincronização volta quando o serviço acordar.
