@@ -112,7 +112,7 @@ export function TeacherAttendancePanel({ data, pin, onConfig }) {
     const a = document.createElement("a");
 
     a.href = url;
-    a.download = `ponto-tesla-${from}-${to}.xlsx`;
+    a.download = `aulas-tesla-${from}-${to}.xlsx`;
     a.click();
 
     setTimeout(() => URL.revokeObjectURL(url), 1000);
@@ -121,7 +121,7 @@ export function TeacherAttendancePanel({ data, pin, onConfig }) {
   return (
     <>
       <section className="panel">
-        <h2>Ponto dos professores</h2>
+        <h2>Acompanhamento das aulas</h2>
 
         <div className="form-grid">
           <label className="field">
@@ -173,9 +173,9 @@ export function TeacherAttendancePanel({ data, pin, onConfig }) {
           {report?.sync.configured
             ? report.sync.lastError ||
               (report.sync.pending
-                ? "Registros salvos. Sincronização pendente."
-                : "Planilha sincronizada.")
-            : "Google Planilhas ainda não conectado. Todos os pontos são salvos no banco e podem ser baixados em XLSX."}
+                ? "Registros salvos. Sincronização da planilha pendente."
+                : "Planilha conectada e sincronizada.")
+            : "Planilha não configurada neste serviço. Os registros ficam salvos no banco e o relatório pode ser baixado em XLSX."}
         </p>
 
         {report?.sync.lastSyncedAt && (
@@ -227,15 +227,15 @@ export function TeacherAttendancePanel({ data, pin, onConfig }) {
               <tr>
                 {[
                   "Data",
-                  "Professor previsto",
-                  "Professor realizado / designado",
+                  "Professor planejado",
+                  "Professor da aula",
                   "Turma",
-                  "Previsto",
-                  "Entrada",
-                  "Saída",
-                  "Realizado",
-                  "Diferença",
-                  "Tipo / Estado",
+                  "Horário planejado",
+                  "Início registrado",
+                  "Conclusão registrada",
+                  "Duração registrada",
+                  "Variação de duração",
+                  "Registro / situação",
                 ].map((h) => (
                   <th key={h}>{h}</th>
                 ))}
@@ -284,13 +284,13 @@ export function TeacherAttendancePanel({ data, pin, onConfig }) {
         </div>
 
         {report && !report.rows.length && (
-          <p>Nenhum ponto neste período.</p>
+          <p>Nenhuma aula neste período.</p>
         )}
 
         <p className="field-hint">
-          “Sem registro” indica ausência de ponto, não confirmação
-          de falta. Horas e diferenças são informativas, sem cálculo
-          salarial.
+          “Sem registro” indica que não há marcação para a aula. As
+          durações e diferenças são informativas e não calculam valores de
+          pagamento.
         </p>
       </section>
 
@@ -335,7 +335,7 @@ export function TeacherAttendancePanel({ data, pin, onConfig }) {
       </section>
 
       <section className="panel">
-        <h2>Agendar professor substituto</h2>
+        <h2>Agendar substituição</h2>
 
         <p>
           Vale somente para a aula escolhida. O titular da turma é
@@ -366,7 +366,9 @@ export function TeacherAttendancePanel({ data, pin, onConfig }) {
         >
           <div className="form-grid">
             <label className="field">
-              Data
+              <span className="field-label">
+                Data <span className="required-mark" aria-hidden="true">*</span>
+              </span>
               <input
                 type="date"
                 min={today()}
@@ -377,7 +379,9 @@ export function TeacherAttendancePanel({ data, pin, onConfig }) {
             </label>
 
             <label className="field">
-              Aula
+              <span className="field-label">
+                Aula <span className="required-mark" aria-hidden="true">*</span>
+              </span>
               <select
                 value={sessionId}
                 required
@@ -395,7 +399,9 @@ export function TeacherAttendancePanel({ data, pin, onConfig }) {
             </label>
 
             <label className="field">
-              Substituto
+              <span className="field-label">
+                Substituto <span className="required-mark" aria-hidden="true">*</span>
+              </span>
               <select
                 value={teacherId}
                 required
@@ -405,11 +411,16 @@ export function TeacherAttendancePanel({ data, pin, onConfig }) {
                   Selecione o professor
                 </option>
 
-                {data.professores
+                {[...data.professores]
                   .filter(
                     (t) =>
                       t.ativo !== false &&
                       t.cpfStatus === "verificado",
+                  )
+                  .sort((a, b) =>
+                    a.nome.localeCompare(b.nome, "pt-BR", {
+                      sensitivity: "base",
+                    }),
                   )
                   .map((t) => (
                     <option key={t.id} value={t.id}>
@@ -421,8 +432,8 @@ export function TeacherAttendancePanel({ data, pin, onConfig }) {
           </div>
 
           <p className="field-hint">
-            Cadastre o CPF em Professores → Editar para habilitar o
-            ponto.
+            Cadastre o CPF em Professores → Editar para habilitar os
+            registros de aula.
           </p>
 
           <button
@@ -478,7 +489,7 @@ export function TeacherAttendancePanel({ data, pin, onConfig }) {
 
       {settings && (
         <section className="panel">
-          <h2>Regras do ponto</h2>
+          <h2>Regras dos registros</h2>
 
           <form
             onSubmit={(e) => {
@@ -499,19 +510,24 @@ export function TeacherAttendancePanel({ data, pin, onConfig }) {
               });
             }}
           >
-            <div className="form-grid">
+            <div className="form-grid point-settings-grid">
               {Object.entries({
                 entryBefore:
-                  "Entrada: minutos antes do início",
+                  "Início: minutos antes do começo da aula",
                 exitBefore:
-                  "Saída: minutos antes do fim",
+                  "Conclusão: minutos antes do fim da aula",
                 exitAfter:
-                  "Saída: minutos após o fim",
+                  "Conclusão: minutos após o fim da aula",
                 duplicateMinutes:
-                  "Intervalo mínimo entre entrada e saída",
+                  "Intervalo mínimo entre início e conclusão",
               }).map(([key, label]) => (
                 <label className="field" key={key}>
-                  {label}
+                  <span className="field-label">
+                    {label}
+                    <span className="required-mark" aria-hidden="true">
+                      {" "}*
+                    </span>
+                  </span>
 
                   <input
                     type="number"
@@ -536,7 +552,7 @@ export function TeacherAttendancePanel({ data, pin, onConfig }) {
               ))}
 
               <label className="field">
-                Tela de sucesso (segundos)
+                <span className="field-label">Tela de sucesso (segundos)</span>
 
                 <input
                   type="number"
@@ -545,6 +561,7 @@ export function TeacherAttendancePanel({ data, pin, onConfig }) {
                   value={
                     settings.successScreenMs / 1000
                   }
+                  required
                   onChange={(e) =>
                     setSettings({
                       ...settings,
@@ -557,9 +574,8 @@ export function TeacherAttendancePanel({ data, pin, onConfig }) {
             </div>
 
             <p className="field-hint">
-              Entrada permitida até o fim da aula. Antes da
-              janela de saída, repetir o CPF apenas informa que a
-              entrada já foi registrada.
+              O início pode ser registrado até o fim da aula. Repetir o CPF
+              antes da janela de conclusão apenas confirma o início já salvo.
             </p>
 
             <button

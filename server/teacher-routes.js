@@ -36,11 +36,11 @@ export function registerTeacherRoutes({
           store.config.teacherAttendanceStart = dateKey(now());
           await writeStore(store);
         } else await saveWorkflow(store, true);
-        console.info("Ponto registrado", {
+        console.info("Horário de aula registrado", {
           professorId: result.body.teacher.id,
           sessionId: result.body.record.sessionId,
           tipo: result.body.record.tipoProfessor,
-          evento: result.body.record.saida ? "saida" : "entrada",
+          evento: result.body.record.saida ? "conclusao" : "inicio",
         });
       }
       res.status(result.status).json(result.body);
@@ -154,7 +154,7 @@ export function registerTeacherRoutes({
       if (store.teacherAttendance.some((r) => r.sessionId === session.id))
         return res.status(409).json({
           error:
-            "Não é possível alterar a substituição de uma aula com ponto registrado.",
+            "Não é possível alterar a substituição de uma aula com horário registrado.",
         });
       const substitution = {
         id: session.id,
@@ -186,7 +186,7 @@ export function registerTeacherRoutes({
       if (store.teacherAttendance.some((r) => r.sessionId === req.params.id))
         return res
           .status(409)
-          .json({ error: "A aula já possui ponto registrado." });
+          .json({ error: "A aula já possui horário registrado." });
       store.teacherSubstitutions = store.teacherSubstitutions.filter(
         (s) => s.id !== req.params.id,
       );
@@ -212,7 +212,7 @@ export function registerTeacherRoutes({
         );
         res.set(
           "Content-Disposition",
-          `attachment; filename="ponto-tesla-${report.range.from}-${report.range.to}.xlsx"`,
+          `attachment; filename="aulas-tesla-${report.range.from}-${report.range.to}.xlsx"`,
         );
         res.send(Buffer.from(buffer));
       } catch (error) {

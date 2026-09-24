@@ -3,29 +3,42 @@ services:
     name: projeto-tesla
     runtime: node
     plan: free
+
     buildCommand: npm ci --include=dev && npm run build
     startCommand: npm start
+
     healthCheckPath: /health
+
     envVars:
       - key: NODE_ENV
         value: production
+
       - key: NODE_VERSION
         value: 22.14.0
+
       - key: TRUST_PROXY_HOPS
         value: 1
 
+      # Google Sheets via Google Apps Script
       - key: GOOGLE_APPS_SCRIPT_URL
         sync: false
+
       - key: SHEET_SYNC_INTERVAL_MS
         value: "60000"
 
+      # PostgreSQL
       - key: DATABASE_URL
         sync: false
+
+      # Segurança
       - key: ADMIN_PIN
         generateValue: true
+
       - key: ADMIN_PIN_HASH
         sync: false
+
       - key: CPF_SALT
         generateValue: true
+
       - key: DEVICE_SECRET
         generateValue: true

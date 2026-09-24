@@ -21,7 +21,7 @@ export function Admin({ data, pin, tab, onTab, onBack, onConfig, onData }) {
     frequencia: "Frequência",
     alunos: "Alunos",
     professores: "Professores",
-    ponto: "Ponto dos professores",
+    ponto: "Aulas dos professores",
     turmas: "Turmas e grade",
     ajustes: "Ajustes",
   };
@@ -103,8 +103,8 @@ function Today({ data }) {
   );
 }
 function Frequency({ data }) {
-  const rows = [...(data.attendance || [])].sort(
-    (a, b) => a.percentual - b.percentual,
+  const rows = [...(data.attendance || [])].sort((a, b) =>
+    a.nome.localeCompare(b.nome, "pt-BR", { sensitivity: "base" }),
   );
   const exportFrequency = () =>
     downloadCsv(
@@ -163,19 +163,71 @@ function Frequency({ data }) {
   );
 }
 function StudentRegister({ data, pin, onData }) {
-  const [form, setForm] = useState({
+  const today = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Fortaleza",
+  }).format(new Date());
+
+  const emptyForm = {
     nome: "",
     tel: "",
     cpf: "",
     turmaIds: [],
-    desde: new Intl.DateTimeFormat("en-CA", {
-      timeZone: "America/Fortaleza",
-    }).format(new Date()),
-  });
+    desde: today,
+  };
+
+  const [form, setForm] = useState(emptyForm);
+  const [editing, setEditing] = useState(null);
+  const [editForm, setEditForm] = useState(emptyForm);
   const [message, setMessage] = useState("");
+  const [editMessage, setEditMessage] = useState("");
+  const [query, setQuery] = useState("");
+  const [filter, setFilter] = useState("todos");
+  const [page, setPage] = useState(1);
+  const pageSize = 25;
+
   const activeStudents = data.alunos.filter(
     (student) => student.ativo !== false,
   );
+
+  const hasCpf = (student) =>
+    student.vinculo === "verificado" || student.vinculo === "auto";
+
+  const visibleStudents = [...activeStudents]
+    .filter((student) => {
+      const normalizedQuery = query.trim().toLocaleLowerCase();
+      if (
+        normalizedQuery &&
+        !student.nome.toLocaleLowerCase().includes(normalizedQuery)
+      ) {
+        return false;
+      }
+
+      if (filter === "com-cpf") return hasCpf(student);
+      if (filter === "sem-cpf") return !hasCpf(student);
+      return true;
+    })
+    .sort((a, b) =>
+      a.nome.localeCompare(b.nome, "pt-BR", {
+        sensitivity: "base",
+      }),
+    );
+
+  const totalPages = Math.max(1, Math.ceil(visibleStudents.length / pageSize));
+  const currentPage = Math.min(page, totalPages);
+  const pageStudents = visibleStudents.slice(
+    (currentPage - 1) * pageSize,
+    currentPage * pageSize,
+  );
+
+  const updateStudents = (student) => {
+    onData({
+      ...data,
+      alunos: data.alunos.map((item) =>
+        item.id === student.id ? student : item,
+      ),
+    });
+  };
+
   const register = async (event) => {
     event.preventDefault();
     try {
@@ -185,33 +237,31 @@ function StudentRegister({ data, pin, onData }) {
         body: JSON.stringify(form),
       });
       onData({ ...data, alunos: [...data.alunos, result.student] });
-      setForm({
-        nome: "",
-        tel: "",
-        cpf: "",
-        turmaIds: [],
-        desde: new Intl.DateTimeFormat("en-CA", {
-          timeZone: "America/Fortaleza",
-        }).format(new Date()),
-      });
+      setForm({ ...emptyForm, desde: today });
       setMessage("Aluno cadastrado.");
     } catch (error) {
       setMessage(error.message);
     }
   };
+
   const exportStudents = () =>
     downloadCsv(
       "alunos-presenca.csv",
       ["Nome", "Telefone", "Turmas", "Desde", "Vínculo", "Ativo"],
-      activeStudents.map((student) => [
-        student.nome,
-        student.tel,
-        (student.turmaIds || []).join(", "),
-        student.desde,
-        student.vinculo || "Pendente",
-        student.ativo !== false ? "Sim" : "Não",
-      ]),
+      activeStudents
+        .sort((a, b) =>
+          a.nome.localeCompare(b.nome, "pt-BR", { sensitivity: "base" }),
+        )
+        .map((student) => [
+          student.nome,
+          student.tel,
+          (student.turmaIds || []).join(", "),
+          student.desde,
+          student.vinculo || "Pendente",
+          student.ativo !== false ? "Sim" : "Não",
+        ]),
     );
+
   const toggleClass = (id) =>
     setForm((current) => ({
       ...current,
@@ -219,84 +269,248 @@ function StudentRegister({ data, pin, onData }) {
         ? current.turmaIds.filter((item) => item !== id)
         : [...current.turmaIds, id],
     }));
+
+  const toggleEditClass = (id) =>
+    setEditForm((current) => ({
+      ...current,
+      turmaIds: current.turmaIds.includes(id)
+        ? current.turmaIds.filter((item) => item !== id)
+        : [...current.turmaIds, id],
+    }));
+
+  const startEditing = (student) => {
+    setEditing(student);
+    setEditForm({
+      nome: student.nome || "",
+      tel: student.tel || "",
+      cpf: "",
+      turmaIds: [...(student.turmaIds || [])],
+      desde: student.desde || today,
+    });
+    setEditMessage("");
+  };
+
+  const cancelEditing = () => {
+    setEditing(null);
+    setEditForm({ ...emptyForm, desde: today });
+    setEditMessage("");
+  };
+
+  const saveEdit = async (event) => {
+    event.preventDefault();
+    if (!editing) return;
+
+    try {
+      const result = await api(`/api/admin/students/${editing.id}`, {
+        method: "PUT",
+        headers: { "x-admin-pin": pin },
+        body: JSON.stringify(editForm),
+      });
+
+      updateStudents(result.student);
+      setEditing(result.student);
+      setEditForm((current) => ({ ...current, cpf: "" }));
+      setEditMessage("Aluno atualizado.");
+    } catch (error) {
+      setEditMessage(error.message);
+    }
+  };
+
+  const unlinkCpf = async () => {
+    if (!editing) return;
+    if (
+      !window.confirm(
+        `Desvincular o CPF do aluno ${editing.nome}? O aluno e o histórico serão mantidos.`,
+      )
+    ) {
+      return;
+    }
+
+    try {
+      const result = await api(`/api/admin/students/${editing.id}/cpf`, {
+        method: "DELETE",
+        headers: { "x-admin-pin": pin },
+      });
+
+      updateStudents(result.student);
+      setEditing(result.student);
+      setEditForm((current) => ({ ...current, cpf: "" }));
+      setEditMessage("CPF desvinculado. O cadastro do aluno foi mantido.");
+    } catch (error) {
+      setEditMessage(error.message);
+    }
+  };
+
+  const remove = async (student) => {
+    if (
+      !window.confirm(
+        `Desativar o aluno ${student.nome}? O histórico de presença será mantido.`,
+      )
+    ) {
+      return;
+    }
+
+    try {
+      await api(`/api/admin/students/${student.id}`, {
+        method: "DELETE",
+        headers: { "x-admin-pin": pin },
+      });
+
+      if (editing?.id === student.id) cancelEditing();
+      onData({
+        ...data,
+        alunos: data.alunos.map((item) =>
+          item.id === student.id ? { ...item, ativo: false } : item,
+        ),
+      });
+      setMessage("Aluno desativado. O histórico foi mantido.");
+    } catch (error) {
+      setMessage(error.message);
+    }
+  };
+
+  const changeQuery = (value) => {
+    setQuery(value);
+    setPage(1);
+  };
+
+  const changeFilter = (value) => {
+    setFilter(value);
+    setPage(1);
+  };
+
   return (
     <>
-      <Panel title="Cadastrar aluno">
-        <form onSubmit={register}>
+      <Panel title={editing ? "Editar aluno" : "Cadastrar aluno"}>
+        <form onSubmit={editing ? saveEdit : register}>
           <div className="form-grid">
             <Field label="Nome completo">
               <input
                 required
                 minLength="3"
-                value={form.nome}
+                value={editing ? editForm.nome : form.nome}
                 onChange={(event) =>
-                  setForm({ ...form, nome: event.target.value })
+                  editing
+                    ? setEditForm({ ...editForm, nome: event.target.value })
+                    : setForm({ ...form, nome: event.target.value })
                 }
               />
             </Field>
             <Field label="Telefone">
               <input
                 inputMode="tel"
-                value={form.tel}
+                value={editing ? editForm.tel : form.tel}
                 onChange={(event) =>
-                  setForm({ ...form, tel: event.target.value })
+                  editing
+                    ? setEditForm({ ...editForm, tel: event.target.value })
+                    : setForm({ ...form, tel: event.target.value })
                 }
               />
             </Field>
-            <Field label="CPF obrigatório">
+            <Field label={editing ? "Novo CPF (opcional)" : "CPF"}>
               <input
-                required
+                required={!editing}
                 inputMode="numeric"
-                value={form.cpf}
+                placeholder={editing ? "Deixe vazio para manter o atual" : ""}
+                value={editing ? editForm.cpf : form.cpf}
                 onChange={(event) =>
-                  setForm({ ...form, cpf: event.target.value })
+                  editing
+                    ? setEditForm({ ...editForm, cpf: event.target.value })
+                    : setForm({ ...form, cpf: event.target.value })
                 }
               />
             </Field>
             <Field label="Início">
               <input
                 type="date"
-                value={form.desde}
+                value={editing ? editForm.desde : form.desde}
                 onChange={(event) =>
-                  setForm({ ...form, desde: event.target.value })
+                  editing
+                    ? setEditForm({ ...editForm, desde: event.target.value })
+                    : setForm({ ...form, desde: event.target.value })
                 }
               />
             </Field>
           </div>
+
           <Field label="Turmas">
             <div className="class-checks">
-              {data.turmas.map((classItem) => (
-                <label
-                  className={`class-check ${form.turmaIds.includes(classItem.id) ? "selected" : ""}`}
-                  key={classItem.id}
-                >
-                  <input
-                    type="checkbox"
-                    checked={form.turmaIds.includes(classItem.id)}
-                    onChange={() => toggleClass(classItem.id)}
-                  />
-                  <span>
-                    {classItem.id} · {classItem.curso || classItem.nome}
-                  </span>
-                </label>
-              ))}
+              {[...data.turmas]
+                .sort((a, b) =>
+                  (a.curso || a.nome || a.id).localeCompare(
+                    b.curso || b.nome || b.id,
+                    "pt-BR",
+                    { sensitivity: "base" },
+                  ),
+                )
+                .map((classItem) => {
+                const selectedIds = editing ? editForm.turmaIds : form.turmaIds;
+                return (
+                  <label
+                    className={`class-check ${selectedIds.includes(classItem.id) ? "selected" : ""}`}
+                    key={classItem.id}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={selectedIds.includes(classItem.id)}
+                      onChange={() =>
+                        editing
+                          ? toggleEditClass(classItem.id)
+                          : toggleClass(classItem.id)
+                      }
+                    />
+                    <span>
+                      {classItem.id} · {classItem.curso || classItem.nome}
+                    </span>
+                  </label>
+                );
+              })}
             </div>
             <small className="field-hint">
-              {form.turmaIds.length
-                ? `${form.turmaIds.length} turma(s) selecionada(s)`
+              {(editing ? editForm.turmaIds : form.turmaIds).length
+                ? `${(editing ? editForm.turmaIds : form.turmaIds).length} turma(s) selecionada(s)`
                 : "Selecione uma ou mais turmas"}
             </small>
           </Field>
+
           <br />
           <button className="primary" type="submit">
-            Cadastrar aluno
+            {editing ? "Salvar alterações" : "Cadastrar aluno"}
           </button>
-          <span className="settings-message">{message}</span>
+
+          {editing && (
+            <>
+              <button
+                className="text-button form-cancel"
+                type="button"
+                onClick={cancelEditing}
+              >
+                Cancelar
+              </button>
+              <button
+                className="text-button danger-button"
+                type="button"
+                onClick={unlinkCpf}
+              >
+                Desvincular CPF
+              </button>
+            </>
+          )}
+
+          <span className="settings-message">
+            {editing ? editMessage : message}
+          </span>
         </form>
       </Panel>
+
       <Panel title="Alunos e vínculos">
         <div className="panel-actions">
-          <span>{activeStudents.length} alunos ativos</span>
+          <span>
+            {activeStudents.length} alunos ativos
+            {query || filter !== "todos"
+              ? ` · ${visibleStudents.length} encontrados`
+              : ""}
+          </span>
           <button
             className="text-button"
             type="button"
@@ -305,25 +519,102 @@ function StudentRegister({ data, pin, onData }) {
             Baixar CSV
           </button>
         </div>
-        <Table headers={["Aluno", "Turmas", "Estado"]}>
-          {activeStudents.map((student) => (
-            <tr key={student.id}>
-              <td>{student.nome}</td>
-              <td>{student.turmaIds?.join(", ")}</td>
-              <td>
-                <span
-                  className={`tag ${student.vinculo === "verificado" ? "ok" : student.vinculo === "auto" ? "warn" : "bad"}`}
-                >
-                  {student.vinculo === "verificado"
-                    ? "Verificado"
-                    : student.vinculo === "auto"
-                      ? "Autovinculado"
-                      : "Sem CPF"}
-                </span>
-              </td>
-            </tr>
+
+        <div className="form-grid">
+          <Field label="Buscar aluno por nome">
+            <input
+              type="search"
+              placeholder="Digite o nome do aluno..."
+              value={query}
+              onChange={(event) => changeQuery(event.target.value)}
+            />
+          </Field>
+        </div>
+
+        <div className="row-actions">
+          {[
+            ["todos", "Todos"],
+            ["com-cpf", "Com CPF"],
+            ["sem-cpf", "Sem CPF"],
+          ].map(([value, label]) => (
+            <button
+              key={value}
+              className={`text-button ${filter === value ? "active" : ""}`}
+              type="button"
+              onClick={() => changeFilter(value)}
+            >
+              {label}
+            </button>
           ))}
-        </Table>
+        </div>
+
+        {pageStudents.length ? (
+          <Table headers={["Aluno", "Turmas", "Estado", "Ações"]}>
+            {pageStudents.map((student) => (
+              <tr key={student.id}>
+                <td>{student.nome}</td>
+                <td>{student.turmaIds?.join(", ") || "—"}</td>
+                <td>
+                  <span
+                    className={`tag ${hasCpf(student) ? (student.vinculo === "verificado" ? "ok" : "warn") : "bad"}`}
+                  >
+                    {student.vinculo === "verificado"
+                      ? "CPF cadastrado"
+                      : student.vinculo === "auto"
+                        ? "CPF autovinculado"
+                        : "Sem CPF"}
+                  </span>
+                </td>
+                <td>
+                  <div className="row-actions">
+                    <button
+                      className="text-button"
+                      type="button"
+                      onClick={() => startEditing(student)}
+                    >
+                      Editar
+                    </button>
+                    <button
+                      className="text-button danger-button"
+                      type="button"
+                      onClick={() => remove(student)}
+                    >
+                      Apagar
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </Table>
+        ) : (
+          <div className="empty">Nenhum aluno encontrado.</div>
+        )}
+
+        {totalPages > 1 && (
+          <div className="panel-actions">
+            <button
+              className="text-button"
+              type="button"
+              disabled={currentPage === 1}
+              onClick={() => setPage((value) => Math.max(1, value - 1))}
+            >
+              ← Anterior
+            </button>
+            <span>
+              Página {currentPage} de {totalPages}
+            </span>
+            <button
+              className="text-button"
+              type="button"
+              disabled={currentPage === totalPages}
+              onClick={() =>
+                setPage((value) => Math.min(totalPages, value + 1))
+              }
+            >
+              Próxima →
+            </button>
+          </div>
+        )}
       </Panel>
     </>
   );
@@ -397,7 +688,7 @@ function CrudTeachers({ data, pin, onData }) {
                 }
               />
             </Field>
-            <Field label="CPF obrigatório">
+            <Field label="CPF">
               <input
                 required={!editing}
                 inputMode="numeric"
@@ -432,7 +723,13 @@ function CrudTeachers({ data, pin, onData }) {
       </Panel>
       <Panel title="Professores cadastrados">
         <Table headers={["Professor", "Situação", "Ações"]}>
-          {teachers.map((teacher) => (
+          {[...teachers]
+            .sort((a, b) =>
+              a.nome.localeCompare(b.nome, "pt-BR", {
+                sensitivity: "base",
+              }),
+            )
+            .map((teacher) => (
             <tr key={teacher.id}>
               <td>{teacher.nome}</td>
               <td>
@@ -576,7 +873,13 @@ function CrudClasses({ data, pin, onData }) {
                 }
               >
                 <option value="">Selecione</option>
-                {activeTeachers.map((teacher) => (
+                {[...activeTeachers]
+                  .sort((a, b) =>
+                    a.nome.localeCompare(b.nome, "pt-BR", {
+                      sensitivity: "base",
+                    }),
+                  )
+                  .map((teacher) => (
                   <option key={teacher.id} value={teacher.id}>
                     {teacher.nome}
                   </option>
@@ -709,7 +1012,15 @@ function CrudClasses({ data, pin, onData }) {
             "Ações",
           ]}
         >
-          {data.turmas.map((item) => (
+          {[...data.turmas]
+            .sort((a, b) =>
+              (a.curso || a.nome || a.id).localeCompare(
+                b.curso || b.nome || b.id,
+                "pt-BR",
+                { sensitivity: "base" },
+              ),
+            )
+            .map((item) => (
             <tr key={item.id}>
               <td>{item.id}</td>
               <td>{item.curso || item.nome}</td>
@@ -841,15 +1152,22 @@ function Settings({ data, pin, onConfig }) {
 }
 function Field({ label, children }) {
   const id = useId();
-  if (["input", "select", "textarea"].includes(children.type))
+  if (["input", "select", "textarea"].includes(children.type)) {
+    const required = Boolean(children.props.required);
     return (
       <div className="field">
         <label className="field-label" htmlFor={id}>
           {label}
+          {required && (
+            <span className="required-mark" aria-hidden="true">
+              {" "}*
+            </span>
+          )}
         </label>
         {cloneElement(children, { id })}
       </div>
     );
+  }
   return (
     <fieldset className="field field-group">
       <legend className="field-label">{label}</legend>

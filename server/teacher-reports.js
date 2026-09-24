@@ -136,22 +136,27 @@ export function buildTeacherReport(store, query = {}, current = now()) {
     s.pendentes += row.entrada && !row.saida ? 1 : 0;
     summary.set(row.professorId, s);
   }
-  return { range, rows, summary: [...summary.values()] };
+  const orderedSummary = [...summary.values()].sort((a, b) =>
+    a.professor.localeCompare(b.professor, "pt-BR", {
+      sensitivity: "base",
+    }),
+  );
+  return { range, rows, summary: orderedSummary };
 }
 export function workbookTables(store, report) {
   const headers = [
     "Data",
     "Dia",
-    "Professor previsto",
-    "Professor realizado / designado",
+    "Professor planejado",
+    "Professor da aula",
     "Turma",
-    "Início previsto",
-    "Fim previsto",
-    "Entrada",
-    "Saída",
-    "Horas previstas",
-    "Horas realizadas",
-    "Diferença (min)",
+    "Início planejado",
+    "Término planejado",
+    "Início registrado",
+    "Conclusão registrada",
+    "Duração planejada",
+    "Duração registrada",
+    "Variação (min)",
     "Status",
     "Tipo",
     "ID da aula",
@@ -192,13 +197,13 @@ export function workbookTables(store, report) {
       name: "RESUMO",
       headers: [
         "Professor",
-        "Horas previstas",
-        "Horas concluídas",
-        "Diferença concluídas (min)",
+        "Duração planejada",
+        "Duração registrada",
+        "Variação registrada (min)",
         "Aulas",
         "Substituições",
         "Sem registro",
-        "Saídas pendentes",
+        "Conclusões pendentes",
       ],
       widths: [32, 20, 22, 30, 12, 18, 18, 22],
       formats: { 1: "[h]:mm", 2: "[h]:mm" },
@@ -278,26 +283,26 @@ export function workbookTables(store, report) {
         [
           "Abrangência",
           report.online
-            ? "RESUMO: período acima. REGISTROS: período acima e todo o histórico de pontos anteriores."
-            : "Todas as abas de ponto consideram o período acima.",
+            ? "RESUMO: período acima. REGISTROS: período acima e os registros anteriores."
+            : "Todas as abas de registro consideram o período acima.",
         ],
         ["Fuso horário", "America/Fortaleza (UTC-3)"],
         ["Fonte", "Banco de dados Tesla. A planilha é uma cópia de consulta."],
         [
           "Sem registro",
-          "Não há ponto para uma aula prevista. Não é confirmação de falta nem cálculo salarial.",
+          "Não há registro para uma aula prevista. Isso não confirma falta nem calcula valores de pagamento.",
         ],
         [
           "Saída pendente",
-          "Horas realizadas e diferença ficam vazias até o registro da saída.",
+          "Duração e variação ficam vazias até que o início e a conclusão sejam registrados.",
         ],
         [
           "Resumo",
-          "A diferença considera somente aulas com entrada e saída concluídas.",
+          "A variação considera somente aulas com início e conclusão registrados.",
         ],
         [
           "Histórico previsto",
-          "Aulas sem ponto usam a grade atual; alterações posteriores na grade podem mudar essas linhas.",
+          "Aulas sem registro usam a grade atual; alterações posteriores na grade podem mudar essas linhas.",
         ],
         ["CPF", "O CPF completo e seu hash não são enviados para a planilha."],
         [

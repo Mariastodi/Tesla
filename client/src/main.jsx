@@ -336,7 +336,7 @@ function App() {
       if (result.state === "choose") {
         setModal({
           kind: "teacher-choose",
-          title: "Qual aula você está registrando?",
+          title: "Selecione a aula",
           options: result.options,
         });
         return;
@@ -346,7 +346,15 @@ function App() {
       setModal({
         kind:
           result.state === "registered" ? "teacher-success" : "teacher-info",
-        title: result.message,
+        title: result.record
+          ? result.record.saida
+            ? result.state === "registered"
+              ? "Conclusão da aula registrada"
+              : "Conclusão da aula já registrada"
+            : result.state === "registered"
+              ? "Início da aula registrado"
+              : "Início da aula já registrado"
+          : result.message,
         detail: result.teacher?.nome,
         record: result.record,
       });
@@ -451,9 +459,9 @@ function App() {
                       {modal.record.horarioFimPrevisto}
                     </p>
                     <p>
-                      Entrada: {modal.record.entradaHora}
+                      Início da aula: {modal.record.entradaHora}
                       {modal.record.saidaHora
-                        ? ` · Saída: ${modal.record.saidaHora}`
+                        ? ` · Conclusão da aula: ${modal.record.saidaHora}`
                         : ""}
                     </p>
                   </>
@@ -493,7 +501,7 @@ function App() {
                 <div className="welcome">
                   <h1>
                     {screen === "teacher"
-                      ? "Registro de ponto do professor"
+                      ? "Registro de horário da aula"
                       : selected
                         ? "Cadastre seu CPF"
                         : "Registre sua presença"}
@@ -511,7 +519,7 @@ function App() {
                   disabled={connection !== "ready" || !deviceReady}
                   label={
                     screen === "teacher"
-                      ? "Confirmar ponto"
+                      ? "Confirmar horário"
                       : selected
                         ? "Cadastrar e continuar"
                         : "Confirmar presença"
@@ -642,7 +650,7 @@ function App() {
                 onClick={() => confirmTeacher(option.id)}
               >
                 {option.turmaNome} · {option.inicio}–{option.fim} ·{" "}
-                {option.action === "exit" ? "Saída" : "Entrada"}
+                {option.action === "exit" ? "Concluir aula" : "Iniciar aula"}
               </button>
             ))}
             {modal.sessions?.map((session) => (
