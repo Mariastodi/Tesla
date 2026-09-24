@@ -114,7 +114,7 @@ export async function syncOnce({
     return {
       state: "synced",
     };
-  } catch {
+  } catch (error) {
     await lock(async () => {
       const store = await read();
 
@@ -140,6 +140,7 @@ export async function syncOnce({
 
     console.warn(
       "Falha na sincronização da planilha; nova tentativa agendada.",
+      error instanceof Error ? error.message : String(error),
     );
 
     return {
