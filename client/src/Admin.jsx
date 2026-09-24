@@ -520,7 +520,7 @@ function StudentRegister({ data, pin, onData }) {
           </button>
         </div>
 
-        <div className="form-grid">
+        <div className="form-grid student-search">
           <Field label="Buscar aluno por nome">
             <input
               type="search"
@@ -531,7 +531,11 @@ function StudentRegister({ data, pin, onData }) {
           </Field>
         </div>
 
-        <div className="row-actions">
+        <div
+          className="row-actions student-filters"
+          role="group"
+          aria-label="Filtrar alunos por vínculo de CPF"
+        >
           {[
             ["todos", "Todos"],
             ["com-cpf", "Com CPF"],
@@ -541,6 +545,7 @@ function StudentRegister({ data, pin, onData }) {
               key={value}
               className={`text-button ${filter === value ? "active" : ""}`}
               type="button"
+              aria-pressed={filter === value}
               onClick={() => changeFilter(value)}
             >
               {label}

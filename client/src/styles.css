@@ -672,6 +672,22 @@ th {
   background: #0b2650;
   color: #b8deff;
 }
+.student-search {
+  margin-bottom: 14px;
+}
+.student-filters {
+  gap: 8px;
+  margin-bottom: 20px;
+}
+.student-filters .text-button {
+  min-height: 44px;
+  padding-inline: 18px;
+}
+.student-filters .text-button.active {
+  border-color: #67c0ff;
+  background: #67c0ff;
+  color: #04122b;
+}
 .settings-message {
   display: block;
   margin: 12px 0 0;
