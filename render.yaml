@@ -22,6 +22,8 @@ services:
       # Google Sheets via Google Apps Script
       - key: GOOGLE_APPS_SCRIPT_URL
         sync: false
+      - key: GOOGLE_APPS_SCRIPT_TOKEN
+        sync: false
 
       - key: SHEET_SYNC_INTERVAL_MS
         value: "60000"

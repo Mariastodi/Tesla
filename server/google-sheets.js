@@ -3,12 +3,14 @@ import { workbookTables } from "./teacher-reports.js";
 export function sheetsConfig(env = process.env) {
   return {
     url: env.GOOGLE_APPS_SCRIPT_URL || "",
+    token: env.GOOGLE_APPS_SCRIPT_TOKEN || "",
   };
 }
 
 export function sheetsConfigured(config = sheetsConfig()) {
   return Boolean(
-    config.url &&
+      config.url &&
+      config.token &&
       /^https:\/\/script\.google\.com\/macros\/s\/[^/]+\/exec$/.test(
         config.url,
       ),
@@ -34,6 +36,7 @@ export async function syncGoogleSheet(
     body: JSON.stringify({
       source: "Tesla",
       generatedAt: new Date().toISOString(),
+      token: config.token,
       tables,
     }),
     signal: AbortSignal.timeout(30000),

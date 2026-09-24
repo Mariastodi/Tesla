@@ -84,11 +84,10 @@ Planilha preparada: https://docs.google.com/spreadsheets/d/18dbQrczPuRkr3CG5mTHd
 
 Para ativar a integração no Render:
 
-1. No Google Cloud, habilite Google Sheets API em um projeto e crie uma conta de serviço dedicada. Não conceda papéis de administrador do projeto.
-2. Crie uma chave JSON dessa conta, mantenha o arquivo privado e compartilhe somente a planilha de destino com o `client_email`, como editor.
-3. Em Environment do Render, configure `GOOGLE_SHEET_ID` com o ID da planilha, `GOOGLE_SERVICE_ACCOUNT_EMAIL` com `client_email` e `GOOGLE_PRIVATE_KEY` com `private_key`. A chave aceita quebras reais ou `\n`. Nunca coloque o JSON, a chave, CPFs ou dados escolares no GitHub.
-4. Reinicie o serviço e use **Tentar sincronizar** no painel. Confira o horário da última sincronização e uma aula real nas abas REGISTROS/RESUMO.
+1. Vincule um projeto do Apps Script à planilha e implemente-o como app da Web. A função `doPost` aceita `source`, `generatedAt`, `tables` e um token secreto, e grava cada tabela na aba correspondente.
+2. Salve `SYNC_TOKEN` nas propriedades do script e configure `GOOGLE_APPS_SCRIPT_URL` e o mesmo valor em `GOOGLE_APPS_SCRIPT_TOKEN` no Environment do Render. Não coloque a URL nem o token no repositório.
+3. Use **Tentar sincronizar** no painel de ponto. Confira o horário da última sincronização e os dados nas abas REGISTROS/RESUMO.
 
-Sem essas credenciais, o painel informa que a integração não está configurada; o ponto e a exportação Excel continuam funcionando. O aplicativo não reutiliza a autorização do conector do assistente.
+Sem essa URL, o painel informa que a integração não está configurada; o ponto e a exportação Excel continuam funcionando.
 
 O servidor sincroniza periodicamente (60 segundos por padrão). Falhas são persistidas com tentativas posteriores e espera crescente até 15 minutos. A planilha online conserva todos os pontos registrados; o resumo cobre o mês atual até hoje. Somente as seis abas gerenciadas são reescritas: crie outra aba para anotações. CPFs e seus hashes nunca são exportados. O banco é a fonte dos dados; alterações manuais nas abas gerenciadas serão substituídas. Se o Render gratuito estiver suspenso, a sincronização volta quando o serviço acordar.
