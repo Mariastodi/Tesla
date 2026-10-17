@@ -21,6 +21,7 @@ import {
   repositoryReady,
   pool,
   databaseErrorCode,
+  databaseErrorDiagnostic,
 } from "./server/repository.js";
 import { transactionalRoutes } from "./server/http.js";
 import {
@@ -194,6 +195,7 @@ const healthCheck = async (_req, res) => {
     console.error("Database health check failed", {
       category: code,
       code: error?.code || "UNKNOWN",
+      diagnostic: databaseErrorDiagnostic(error),
     });
     res.status(503).json({ ok: false, code });
   }
@@ -226,6 +228,7 @@ routes.get("/api/bootstrap", async (req, res) => {
     console.error("Falha ao carregar bootstrap", {
       category: code,
       code: error?.code || "UNKNOWN",
+      diagnostic: databaseErrorDiagnostic(error),
     });
     res.status(500).json({
       error: "Não foi possível carregar o sistema.",
@@ -1490,6 +1493,7 @@ app.use(
       status,
       category: code,
       code: error?.code || "UNKNOWN",
+      diagnostic: databaseErrorDiagnostic(error),
     });
 
     res.status(status).json({

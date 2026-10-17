@@ -37,11 +37,20 @@ export function databaseErrorCode(error) {
     return "DB_TLS_CERTIFICATE_FAILED";
   if (code === "53300") return "DB_CONNECTION_LIMIT";
   if (code === "53000") return "DB_RESOURCE_LIMIT";
+  if (code === "XX000") return "DB_PROVIDER_INTERNAL_ERROR";
   if (code === "DATABASE_URL_INVALID") return "DB_URL_INVALID";
   if (code === "DATABASE_URL_MISSING") return "DB_URL_MISSING";
   if (code === "PRODUCTION_SECRETS_MISSING")
     return "PRODUCTION_SECRETS_MISSING";
   return "INTERNAL_ERROR";
+}
+
+export function databaseErrorDiagnostic(error) {
+  if (String(error?.code || "") !== "XX000") return undefined;
+  return String(error?.message || "")
+    .replace(/(postgres(?:ql)?:\/\/[^:\s/]+):[^@\s]+@/gi, "$1:[redacted]@")
+    .replace(/[\r\n\t]+/g, " ")
+    .slice(0, 240);
 }
 
 function databaseConnectionString() {
