@@ -10,6 +10,12 @@
     }
   ],
   "functions": {
+    "api/admin/overview.js": {
+      "includeFiles": "server/migrations/**"
+    },
+    "api/admin/[...path].js": {
+      "includeFiles": "server/migrations/**"
+    },
     "api/device/activate.js": {
       "includeFiles": "server/migrations/**"
     },
