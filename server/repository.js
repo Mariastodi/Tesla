@@ -25,6 +25,16 @@ export function databaseErrorCode(error) {
     ].includes(code)
   )
     return "DB_CONNECTION_FAILED";
+  if (
+    [
+      "SELF_SIGNED_CERT_IN_CHAIN",
+      "DEPTH_ZERO_SELF_SIGNED_CERT",
+      "UNABLE_TO_VERIFY_LEAF_SIGNATURE",
+      "CERT_HAS_EXPIRED",
+      "ERR_TLS_CERT_ALTNAME_INVALID",
+    ].includes(code)
+  )
+    return "DB_TLS_CERTIFICATE_FAILED";
   if (code === "53300") return "DB_CONNECTION_LIMIT";
   if (code === "53000") return "DB_RESOURCE_LIMIT";
   if (code === "DATABASE_URL_INVALID") return "DB_URL_INVALID";
