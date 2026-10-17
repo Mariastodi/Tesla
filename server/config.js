@@ -21,12 +21,26 @@ export const adminPinHash =
   configuredHash || (legacyPin ? await hashPin(legacyPin) : "");
 export const production =
   process.env.NODE_ENV === "production" || process.env.VERCEL === "1";
-if (
+const missingProductionConfig =
   production &&
   (!process.env.DATABASE_URL ||
     salt.length < 32 ||
-    (!configuredHash && legacyPin.length < 12))
-)
-  throw new Error(
-    "Produção exige DATABASE_URL, CPF_SALT (32 caracteres) e ADMIN_PIN_HASH (ou ADMIN_PIN legado de 12 caracteres).",
+    (!configuredHash && legacyPin.length < 12));
+
+if (missingProductionConfig) {
+  console.error("Invalid production configuration", {
+    category: process.env.DATABASE_URL
+      ? "PRODUCTION_SECRETS_MISSING"
+      : "DB_URL_MISSING",
+  });
+  throw Object.assign(
+    new Error(
+      "Produção exige DATABASE_URL, CPF_SALT (32 caracteres) e ADMIN_PIN_HASH (ou ADMIN_PIN legado de 12 caracteres).",
+    ),
+    {
+      code: process.env.DATABASE_URL
+        ? "PRODUCTION_SECRETS_MISSING"
+        : "DATABASE_URL_MISSING",
+    },
   );
+}

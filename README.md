@@ -36,7 +36,7 @@ O projeto está preparado para a Vercel: o Express é exportado como uma funçã
 
 Configure estas variáveis em **Project → Settings → Environment Variables** para Production (e Preview, se for usar previews):
 
-- `DATABASE_URL`: conexão com PostgreSQL persistente. A Vercel não fornece disco persistente para o estado da aplicação.
+- `DATABASE_URL`: URI **Transaction pooler** do Supabase (porta `6543`), com `sslmode=require`. Cadastre como variável privada no Vercel para Production (e Preview, se necessário). Nunca use o prefixo `VITE_` nem exponha essa URI no navegador.
 - `ADMIN_PIN_HASH`: hash scrypt de um código de 8 a 128 caracteres.
 - `CPF_SALT`: segredo de pelo menos 32 caracteres. Preserve o valor atual para continuar reconhecendo os CPFs já vinculados.
 - `DEVICE_SECRET`: segredo aleatório longo para assinar a ativação dos tablets.
@@ -47,7 +47,7 @@ Não configure `ADMIN_PIN` quando usar `ADMIN_PIN_HASH`. A Vercel executa o Expr
 
 Depois de configurar as variáveis, faça o primeiro deploy e confira `/health`. Antes de apontar o tablet para o novo endereço, valide o fluxo de presença e a conexão com o banco. O serviço no Render e o arquivo `render.yaml` podem ser mantidos durante a migração como opção de retorno.
 
-A produção recusa inicializar sem banco e segredos adequados. Guarde `CPF_SALT` com o backup: trocar esse segredo impede reconhecer os CPFs já vinculados. A importação inicial só aceita uma base vazia e exige autenticação da coordenação. Dados pessoais nunca devem ser enviados ao GitHub.
+A produção recusa inicializar sem banco e segredos adequados. As funções Vercel rodam em `gru1` (São Paulo), perto do projeto Supabase em `sa-east-1`. A conexão do navegador é sempre same-origin via `/api/*`; somente a função serverless lê `DATABASE_URL` usando `pg`. As migrações criam o esquema e habilitam RLS sem políticas públicas. Guarde `CPF_SALT` com o backup: trocar esse segredo impede reconhecer os CPFs já vinculados. A importação inicial só aceita uma base vazia e exige autenticação da coordenação. Dados pessoais nunca devem ser enviados ao GitHub.
 
 O plano gratuito do Render pode suspender o serviço após inatividade e demorar a responder na primeira abertura. Manter o tablet aberto facilita verificar a conexão, mas uma hospedagem gratuita não oferece garantia de disponibilidade contínua.
 

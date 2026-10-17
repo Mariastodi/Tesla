@@ -20,6 +20,7 @@ import {
   addCheckin,
   repositoryReady,
   pool,
+  databaseErrorCode,
 } from "./server/repository.js";
 import { transactionalRoutes } from "./server/http.js";
 import {
@@ -52,11 +53,7 @@ app.use(
     contentSecurityPolicy: {
       directives: {
         defaultSrc: ["'self'"],
-        styleSrc: [
-          "'self'",
-          "'unsafe-inline'",
-          "https://fonts.googleapis.com",
-        ],
+        styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
         fontSrc: ["'self'", "https://fonts.gstatic.com", "data:"],
         imgSrc: ["'self'", "data:"],
         scriptSrc: ["'self'"],
@@ -147,8 +144,7 @@ const deviceEnabled = (req) => {
   const [expires, signature] = cookie.split(".");
 
   return (
-    Number(expires) > Date.now() &&
-    sameSecret(signature, signDevice(expires))
+    Number(expires) > Date.now() && sameSecret(signature, signDevice(expires))
   );
 };
 
@@ -159,17 +155,13 @@ routes.post(
   async (_req, res) => {
     const expires = String(Date.now() + 30 * 86400000);
 
-    res.cookie(
-      "tesla_device",
-      `${expires}.${signDevice(expires)}`,
-      {
-        httpOnly: true,
-        secure: production,
-        sameSite: "strict",
-        maxAge: 30 * 86400000,
-        path: "/api",
-      },
-    );
+    res.cookie("tesla_device", `${expires}.${signDevice(expires)}`, {
+      httpOnly: true,
+      secure: production,
+      sameSite: "strict",
+      maxAge: 30 * 86400000,
+      path: "/api",
+    });
 
     res.json({ ok: true });
   },
@@ -179,8 +171,7 @@ app.use("/api/kiosk", (req, res, next) =>
   deviceEnabled(req)
     ? next()
     : res.status(401).json({
-        error:
-          "Este tablet precisa ser ativado pela coordenação.",
+        error: "Este tablet precisa ser ativado pela coordenação.",
       }),
 );
 
@@ -188,8 +179,13 @@ const healthCheck = async (_req, res) => {
   try {
     await repositoryReady;
     res.json({ ok: true });
-  } catch {
-    res.status(503).json({ ok: false });
+  } catch (error) {
+    const code = databaseErrorCode(error);
+    console.error("Database health check failed", {
+      category: code,
+      code: error?.code || "UNKNOWN",
+    });
+    res.status(503).json({ ok: false, code });
   }
 };
 
@@ -209,219 +205,173 @@ routes.get("/api/bootstrap", async (req, res) => {
         tolAntes: store.config.tolAntes,
         tolDepois: store.config.tolDepois,
         inicioControle: store.config.inicioControle,
-        successScreenMs:
-          store.config.successScreenMs || 5500,
+        successScreenMs: store.config.successScreenMs || 5500,
       },
 
       now: now().toISOString(),
     });
   } catch (error) {
-    console.error(
-      "Falha ao carregar bootstrap",
-      error.code || error.name || "erro desconhecido",
-    );
+    const code = databaseErrorCode(error);
+    console.error("Falha ao carregar bootstrap", {
+      category: code,
+      code: error?.code || "UNKNOWN",
+    });
     res.status(500).json({
       error: "Não foi possível carregar o sistema.",
+      code,
     });
   }
 });
 
-routes.post(
-  "/api/kiosk/identify",
-  kioskLimiter,
-  async (req, res) => {
-    const cpf = onlyDigits(req.body.cpf);
+routes.post("/api/kiosk/identify", kioskLimiter, async (req, res) => {
+  const cpf = onlyDigits(req.body.cpf);
 
-    if (!validCpf(cpf))
-      return res.status(422).json({
-        error: "CPF inválido.",
-      });
+  if (!validCpf(cpf))
+    return res.status(422).json({
+      error: "CPF inválido.",
+    });
 
-    const store = await readStore();
-    const cpfHash = hashCpf(cpf);
+  const store = await readStore();
+  const cpfHash = hashCpf(cpf);
 
-    const student = store.alunos.find(
-      (item) =>
-        matchesCpf(item, cpf) &&
-        item.ativo !== false,
-    );
+  const student = store.alunos.find(
+    (item) => matchesCpf(item, cpf) && item.ativo !== false,
+  );
 
-    const sessions = openSessions(store);
+  const sessions = openSessions(store);
 
-    if (!student) {
-      return res.json({
-        state: "first-access",
-      });
-    }
-
-    if (student.cpfHash !== cpfHash) {
-      student.cpfHash = cpfHash;
-      await writeStore(store);
-    }
-
-    const studentSessions = sessions.filter(
-      (session) =>
-        (student.turmaIds || []).includes(session.turmaId),
-    );
-
+  if (!student) {
     return res.json({
-      state: "identified",
-      student: publicKioskStudent(student),
-      sessions: studentSessions,
+      state: "first-access",
     });
-  },
-);
+  }
 
-routes.get(
-  "/api/kiosk/roster",
-  kioskLimiter,
-  async (req, res) => {
-    const store = await readStore();
-
-    const query = String(req.query.q || "")
-      .trim()
-      .toLocaleLowerCase();
-
-    if (query.length < 3 || query.length > 100)
-      return res.json({
-        students: [],
-      });
-
-    res.json({
-      students: store.alunos
-        .filter(
-          (item) =>
-            item.ativo !== false &&
-            !item.cpfHash &&
-            item.nome
-              .toLocaleLowerCase()
-              .includes(query),
-        )
-        .slice(0, 20)
-        .map(publicKioskStudent),
-    });
-  },
-);
-
-routes.post(
-  "/api/kiosk/link",
-  kioskLimiter,
-  async (req, res) => {
-    const cpf = onlyDigits(req.body.cpf);
-
-    if (!validCpf(cpf))
-      return res.status(422).json({
-        error: "CPF inválido.",
-      });
-
-    const store = await readStore();
-    const cpfHash = hashCpf(cpf);
-
-    const alreadyLinked = store.alunos.find(
-      (item) => matchesCpf(item, cpf),
-    );
-
-    const student = store.alunos.find(
-      (item) =>
-        item.id === req.body.alunoId &&
-        item.ativo !== false,
-    );
-
-    if (alreadyLinked)
-      return res.status(409).json({
-        error:
-          "Este CPF já está vinculado a outro aluno.",
-      });
-
-    if (!student || student.cpfHash)
-      return res.status(409).json({
-        error: "Aluno indisponível para vínculo.",
-      });
-
+  if (student.cpfHash !== cpfHash) {
     student.cpfHash = cpfHash;
-    student.vinculo = "auto";
-    student.vinculoEm = Date.now();
-
     await writeStore(store);
+  }
 
+  const studentSessions = sessions.filter((session) =>
+    (student.turmaIds || []).includes(session.turmaId),
+  );
+
+  return res.json({
+    state: "identified",
+    student: publicKioskStudent(student),
+    sessions: studentSessions,
+  });
+});
+
+routes.get("/api/kiosk/roster", kioskLimiter, async (req, res) => {
+  const store = await readStore();
+
+  const query = String(req.query.q || "")
+    .trim()
+    .toLocaleLowerCase();
+
+  if (query.length < 3 || query.length > 100)
     return res.json({
-      state: "linked",
-      student: publicKioskStudent(student),
-      sessions: openSessions(store).filter(
-        (session) =>
-          (student.turmaIds || []).includes(
-            session.turmaId,
-          ),
-      ),
+      students: [],
     });
-  },
-);
 
-routes.post(
-  "/api/kiosk/claim",
-  kioskLimiter,
-  async (req, res) => {
-    const cpf = onlyDigits(req.body.cpf);
-
-    if (!validCpf(cpf))
-      return res.status(422).json({
-        error: "CPF inválido.",
-      });
-
-    const store = await readStore();
-
-    const student = store.alunos.find(
-      (item) =>
-        item.id === req.body.alunoId &&
-        item.ativo !== false,
-    );
-
-    const session = openSessions(store).find(
-      (item) => item.id === req.body.sessionId,
-    );
-
-    if (
-      !student ||
-      !session ||
-      !(student.turmaIds || []).includes(
-        session.turmaId,
-      ) ||
-      student.cpfHash
-    )
-      return res.status(409).json({
-        error: "Vínculo indisponível.",
-      });
-
-    if (
-      store.alunos.some(
-        (item) => matchesCpf(item, cpf),
+  res.json({
+    students: store.alunos
+      .filter(
+        (item) =>
+          item.ativo !== false &&
+          !item.cpfHash &&
+          item.nome.toLocaleLowerCase().includes(query),
       )
-    )
-      return res.status(409).json({
-        error: "Este CPF já possui vínculo.",
-      });
+      .slice(0, 20)
+      .map(publicKioskStudent),
+  });
+});
 
-    student.cpfHash = hashCpf(cpf);
-    student.vinculo = "auto";
-    student.vinculoEm = Date.now();
+routes.post("/api/kiosk/link", kioskLimiter, async (req, res) => {
+  const cpf = onlyDigits(req.body.cpf);
 
-    await writeStore(store);
+  if (!validCpf(cpf))
+    return res.status(422).json({
+      error: "CPF inválido.",
+    });
 
-    return recordAttendance(
-      store,
-      student,
-      session,
-      res,
-    );
-  },
-);
+  const store = await readStore();
+  const cpfHash = hashCpf(cpf);
 
-async function recordAttendance(
-  store,
-  student,
-  session,
-  res,
-) {
+  const alreadyLinked = store.alunos.find((item) => matchesCpf(item, cpf));
+
+  const student = store.alunos.find(
+    (item) => item.id === req.body.alunoId && item.ativo !== false,
+  );
+
+  if (alreadyLinked)
+    return res.status(409).json({
+      error: "Este CPF já está vinculado a outro aluno.",
+    });
+
+  if (!student || student.cpfHash)
+    return res.status(409).json({
+      error: "Aluno indisponível para vínculo.",
+    });
+
+  student.cpfHash = cpfHash;
+  student.vinculo = "auto";
+  student.vinculoEm = Date.now();
+
+  await writeStore(store);
+
+  return res.json({
+    state: "linked",
+    student: publicKioskStudent(student),
+    sessions: openSessions(store).filter((session) =>
+      (student.turmaIds || []).includes(session.turmaId),
+    ),
+  });
+});
+
+routes.post("/api/kiosk/claim", kioskLimiter, async (req, res) => {
+  const cpf = onlyDigits(req.body.cpf);
+
+  if (!validCpf(cpf))
+    return res.status(422).json({
+      error: "CPF inválido.",
+    });
+
+  const store = await readStore();
+
+  const student = store.alunos.find(
+    (item) => item.id === req.body.alunoId && item.ativo !== false,
+  );
+
+  const session = openSessions(store).find(
+    (item) => item.id === req.body.sessionId,
+  );
+
+  if (
+    !student ||
+    !session ||
+    !(student.turmaIds || []).includes(session.turmaId) ||
+    student.cpfHash
+  )
+    return res.status(409).json({
+      error: "Vínculo indisponível.",
+    });
+
+  if (store.alunos.some((item) => matchesCpf(item, cpf)))
+    return res.status(409).json({
+      error: "Este CPF já possui vínculo.",
+    });
+
+  student.cpfHash = hashCpf(cpf);
+  student.vinculo = "auto";
+  student.vinculoEm = Date.now();
+
+  await writeStore(store);
+
+  return recordAttendance(store, student, session, res);
+});
+
+async function recordAttendance(store, student, session, res) {
   const id = `${session.id}__${student.id}`;
 
   const result = await addCheckin(store, {
@@ -432,22 +382,16 @@ async function recordAttendance(
     sessaoId: session.id,
     data: session.data,
     inicio: session.inicio,
-    hora: `${String(
-      now().getHours(),
-    ).padStart(2, "0")}:${String(
+    hora: `${String(now().getHours()).padStart(2, "0")}:${String(
       now().getMinutes(),
     ).padStart(2, "0")}`,
     ts: Date.now(),
   });
 
-  const classItem = store.turmas.find(
-    (item) => item.id === session.turmaId,
-  );
+  const classItem = store.turmas.find((item) => item.id === session.turmaId);
 
   return res.json({
-    state: result.created
-      ? "registered"
-      : "already",
+    state: result.created ? "registered" : "already",
 
     student: publicKioskStudent(student),
     session,
@@ -455,48 +399,35 @@ async function recordAttendance(
   });
 }
 
-routes.post(
-  "/api/kiosk/checkin",
-  kioskLimiter,
-  async (req, res) => {
-    const cpf = onlyDigits(req.body.cpf);
+routes.post("/api/kiosk/checkin", kioskLimiter, async (req, res) => {
+  const cpf = onlyDigits(req.body.cpf);
 
-    if (!validCpf(cpf))
-      return res.status(422).json({
-        error: "CPF inválido.",
-      });
+  if (!validCpf(cpf))
+    return res.status(422).json({
+      error: "CPF inválido.",
+    });
 
-    const store = await readStore();
+  const store = await readStore();
 
-    const student = store.alunos.find(
-      (item) =>
-        matchesCpf(item, cpf) &&
-        item.ativo !== false,
-    );
+  const student = store.alunos.find(
+    (item) => matchesCpf(item, cpf) && item.ativo !== false,
+  );
 
-    const session = openSessions(store).find(
-      (item) => item.id === req.body.sessionId,
-    );
+  const session = openSessions(store).find(
+    (item) => item.id === req.body.sessionId,
+  );
 
-    if (
-      !student ||
-      !session ||
-      !(student.turmaIds || []).includes(
-        session.turmaId,
-      )
-    )
-      return res.status(404).json({
-        error: "Aluno ou aula não encontrado.",
-      });
+  if (
+    !student ||
+    !session ||
+    !(student.turmaIds || []).includes(session.turmaId)
+  )
+    return res.status(404).json({
+      error: "Aluno ou aula não encontrado.",
+    });
 
-    return recordAttendance(
-      store,
-      student,
-      session,
-      res,
-    );
-  },
-);
+  return recordAttendance(store, student, session, res);
+});
 
 routes.get(
   "/api/admin/overview",
@@ -509,9 +440,7 @@ routes.get(
       config: store.config,
       turmas: store.turmas,
 
-      professores: (
-        store.professores || []
-      ).map(publicTeacher),
+      professores: (store.professores || []).map(publicTeacher),
 
       alunos: store.alunos.map(publicStudent),
 
@@ -539,64 +468,47 @@ routes.post(
 
     if (name.length < 3)
       return res.status(422).json({
-        error:
-          "Informe o nome completo do aluno.",
+        error: "Informe o nome completo do aluno.",
       });
 
     if (!cpf || !validCpf(cpf))
       return res.status(422).json({
-        error:
-          "CPF obrigatório e válido.",
+        error: "CPF obrigatório e válido.",
       });
 
     const store = await readStore();
 
-    const storeClassIds = new Set(
-      store.turmas.map((item) => item.id),
-    );
+    const storeClassIds = new Set(store.turmas.map((item) => item.id));
 
-    const turmaIds = Array.isArray(
-      req.body.turmaIds,
-    )
+    const turmaIds = Array.isArray(req.body.turmaIds)
       ? req.body.turmaIds.filter(
-          (id) =>
-            typeof id === "string" &&
-            storeClassIds.has(id),
+          (id) => typeof id === "string" && storeClassIds.has(id),
         )
       : [];
 
-    const normalizedName =
-      name.toLocaleLowerCase();
+    const normalizedName = name.toLocaleLowerCase();
 
     if (
       store.alunos.some(
         (item) =>
-          item.nome.toLocaleLowerCase() ===
-            normalizedName &&
+          item.nome.toLocaleLowerCase() === normalizedName &&
           item.ativo !== false,
       )
     )
       return res.status(409).json({
-        error:
-          "Já existe um aluno ativo com esse nome.",
+        error: "Já existe um aluno ativo com esse nome.",
       });
 
     if (!turmaIds.length)
       return res.status(422).json({
-        error:
-          "Selecione pelo menos uma turma.",
+        error: "Selecione pelo menos uma turma.",
       });
 
     if (
-      store.alunos.some(
-        (item) =>
-          matchesCpf(item, cpf) &&
-          item.ativo !== false,
-      )
+      store.alunos.some((item) => matchesCpf(item, cpf) && item.ativo !== false)
     )
       return res.status(409).json({
-        error:
-          "Este CPF já está vinculado a um aluno.",
+        error: "Este CPF já está vinculado a um aluno.",
       });
 
     const student = {
@@ -605,10 +517,7 @@ routes.post(
       tel: phone,
       turmaIds,
       ativo: true,
-      desde: String(
-        req.body.desde ||
-          dateKey(now()),
-      ),
+      desde: String(req.body.desde || dateKey(now())),
       cpfHash: hashCpf(cpf),
       vinculo: "verificado",
       vinculoEm: Date.now(),
@@ -637,28 +546,23 @@ routes.post(
 
     if (name.length < 3)
       return res.status(422).json({
-        error:
-          "Informe o nome completo do professor.",
+        error: "Informe o nome completo do professor.",
       });
 
     if (!validCpf(cpf))
       return res.status(422).json({
-        error:
-          "CPF obrigatório e válido.",
+        error: "CPF obrigatório e válido.",
       });
 
     const store = await readStore();
 
     if (
       store.professores.some(
-        (item) =>
-          matchesCpf(item, cpf) &&
-          item.ativo !== false,
+        (item) => matchesCpf(item, cpf) && item.ativo !== false,
       )
     )
       return res.status(409).json({
-        error:
-          "Este CPF já está vinculado a um professor.",
+        error: "Este CPF já está vinculado a um professor.",
       });
 
     const teacher = {
@@ -670,10 +574,7 @@ routes.post(
       vinculoEm: Date.now(),
     };
 
-    store.professores = [
-      ...(store.professores || []),
-      teacher,
-    ];
+    store.professores = [...(store.professores || []), teacher];
 
     await writeStore(store);
 
@@ -695,39 +596,23 @@ routes.post(
       .toUpperCase()
       .replace(/[^A-Z0-9-]/g, "");
 
-    const course = String(
-      req.body.curso || "",
-    ).trim();
+    const course = String(req.body.curso || "").trim();
 
-    const teacher = (
-      store.professores || []
-    ).find(
-      (item) =>
-        item.id === req.body.professorId &&
-        item.ativo !== false,
+    const teacher = (store.professores || []).find(
+      (item) => item.id === req.body.professorId && item.ativo !== false,
     );
 
     const horarios = validatedSchedules(req.body);
 
-    if (
-      !code ||
-      !course ||
-      !teacher ||
-      !horarios
-    )
+    if (!code || !course || !teacher || !horarios)
       return res.status(422).json({
         error:
           "Preencha código, curso, professor, dia e horários corretamente.",
       });
 
-    if (
-      store.turmas.some(
-        (item) => item.id === code,
-      )
-    )
+    if (store.turmas.some((item) => item.id === code))
       return res.status(409).json({
-        error:
-          "Já existe uma turma com esse código.",
+        error: "Já existe uma turma com esse código.",
       });
 
     const classItem = {
@@ -737,13 +622,8 @@ routes.post(
       professor: teacher.nome,
       professorId: teacher.id,
       sala: String(req.body.sala || ""),
-      inicio: String(
-        req.body.dataInicio ||
-          dateKey(now()),
-      ),
-      fim: String(
-        req.body.dataFim || "",
-      ),
+      inicio: String(req.body.dataInicio || dateKey(now())),
+      fim: String(req.body.dataFim || ""),
       ativa: true,
       canceladas: [],
       horarios,
@@ -766,9 +646,7 @@ routes.put(
   async (req, res) => {
     const store = await readStore();
 
-    const teacher = (
-      store.professores || []
-    ).find(
+    const teacher = (store.professores || []).find(
       (item) => item.id === req.params.id,
     );
 
@@ -778,28 +656,24 @@ routes.put(
 
     if (!teacher)
       return res.status(404).json({
-        error:
-          "Professor não encontrado.",
+        error: "Professor não encontrado.",
       });
 
     if (name.length < 3)
       return res.status(422).json({
-        error:
-          "Informe o nome completo do professor.",
+        error: "Informe o nome completo do professor.",
       });
 
     if (
       store.professores.some(
         (item) =>
           item.id !== teacher.id &&
-          item.nome.toLocaleLowerCase() ===
-            name.toLocaleLowerCase() &&
+          item.nome.toLocaleLowerCase() === name.toLocaleLowerCase() &&
           item.ativo !== false,
       )
     )
       return res.status(409).json({
-        error:
-          "Já existe um professor ativo com esse nome.",
+        error: "Já existe um professor ativo com esse nome.",
       });
 
     const cpf = onlyDigits(req.body.cpf);
@@ -812,14 +686,11 @@ routes.put(
 
       if (
         store.professores.some(
-          (item) =>
-            item.id !== teacher.id &&
-            matchesCpf(item, cpf),
+          (item) => item.id !== teacher.id && matchesCpf(item, cpf),
         )
       )
         return res.status(409).json({
-          error:
-            "Este CPF já está vinculado a outro professor.",
+          error: "Este CPF já está vinculado a outro professor.",
         });
 
       teacher.cpfHash = hashCpf(cpf);
@@ -829,14 +700,13 @@ routes.put(
 
     teacher.nome = name;
 
-    store.turmas = store.turmas.map(
-      (item) =>
-        item.professorId === teacher.id
-          ? {
-              ...item,
-              professor: name,
-            }
-          : item,
+    store.turmas = store.turmas.map((item) =>
+      item.professorId === teacher.id
+        ? {
+            ...item,
+            professor: name,
+          }
+        : item,
     );
 
     await writeStore(store);
@@ -855,28 +725,22 @@ routes.delete(
   async (req, res) => {
     const store = await readStore();
 
-    const teacher = (
-      store.professores || []
-    ).find(
+    const teacher = (store.professores || []).find(
       (item) => item.id === req.params.id,
     );
 
     if (!teacher)
       return res.status(404).json({
-        error:
-          "Professor não encontrado.",
+        error: "Professor não encontrado.",
       });
 
     if (
       store.turmas.some(
-        (item) =>
-          item.professorId === teacher.id &&
-          item.ativa !== false,
+        (item) => item.professorId === teacher.id && item.ativa !== false,
       )
     )
       return res.status(409).json({
-        error:
-          "Não é possível apagar um professor ligado a uma turma ativa.",
+        error: "Não é possível apagar um professor ligado a uma turma ativa.",
       });
 
     teacher.ativo = false;
@@ -896,40 +760,24 @@ routes.put(
   async (req, res) => {
     const store = await readStore();
 
-    const classItem = store.turmas.find(
-      (item) => item.id === req.params.id,
+    const classItem = store.turmas.find((item) => item.id === req.params.id);
+
+    const teacher = (store.professores || []).find(
+      (item) => item.id === req.body.professorId && item.ativo !== false,
     );
 
-    const teacher = (
-      store.professores || []
-    ).find(
-      (item) =>
-        item.id === req.body.professorId &&
-        item.ativo !== false,
-    );
+    const course = String(req.body.curso || "").trim();
 
-    const course = String(
-      req.body.curso || "",
-    ).trim();
-
-    const horarios = validatedSchedules(
-      req.body,
-    );
+    const horarios = validatedSchedules(req.body);
 
     if (!classItem)
       return res.status(404).json({
-        error:
-          "Turma não encontrada.",
+        error: "Turma não encontrada.",
       });
 
-    if (
-      !course ||
-      !teacher ||
-      !horarios
-    )
+    if (!course || !teacher || !horarios)
       return res.status(422).json({
-        error:
-          "Preencha curso, professor, dia e horários corretamente.",
+        error: "Preencha curso, professor, dia e horários corretamente.",
       });
 
     Object.assign(classItem, {
@@ -938,15 +786,8 @@ routes.put(
       professor: teacher.nome,
       professorId: teacher.id,
       sala: String(req.body.sala || ""),
-      inicio: String(
-        req.body.dataInicio ||
-          classItem.inicio,
-      ),
-      fim: String(
-        req.body.dataFim ||
-          classItem.fim ||
-          "",
-      ),
+      inicio: String(req.body.dataInicio || classItem.inicio),
+      fim: String(req.body.dataFim || classItem.fim || ""),
       horarios,
     });
 
@@ -965,37 +806,26 @@ routes.delete(
   async (req, res) => {
     const store = await readStore();
 
-    const classItem = store.turmas.find(
-      (item) => item.id === req.params.id,
-    );
+    const classItem = store.turmas.find((item) => item.id === req.params.id);
 
     if (!classItem)
       return res.status(404).json({
-        error:
-          "Turma não encontrada.",
+        error: "Turma não encontrada.",
       });
 
     if (
       store.alunos.some(
         (item) =>
-          item.ativo !== false &&
-          (item.turmaIds || []).includes(
-            classItem.id,
-          ),
+          item.ativo !== false && (item.turmaIds || []).includes(classItem.id),
       ) ||
-      store.checkins.some(
-        (item) =>
-          item.turmaId === classItem.id,
-      )
+      store.checkins.some((item) => item.turmaId === classItem.id)
     )
       return res.status(409).json({
         error:
           "Não é possível apagar uma turma com alunos ou presenças vinculadas.",
       });
 
-    store.turmas = store.turmas.filter(
-      (item) => item.id !== classItem.id,
-    );
+    store.turmas = store.turmas.filter((item) => item.id !== classItem.id);
 
     await writeStore(store);
 
@@ -1015,47 +845,25 @@ routes.put(
     store.config = {
       ...store.config,
 
-      escola: String(
-        req.body.escola ||
-          store.config.escola,
-      ).slice(0, 120),
+      escola: String(req.body.escola || store.config.escola).slice(0, 120),
 
       minimo: Math.min(
         100,
-        Math.max(
-          0,
-          Number(
-            req.body.minimo ||
-              store.config.minimo,
-          ),
-        ),
+        Math.max(0, Number(req.body.minimo || store.config.minimo)),
       ),
 
       tolAntes: Math.min(
         240,
-        Math.max(
-          0,
-          Number(
-            req.body.tolAntes ??
-              store.config.tolAntes,
-          ),
-        ),
+        Math.max(0, Number(req.body.tolAntes ?? store.config.tolAntes)),
       ),
 
       tolDepois: Math.min(
         240,
-        Math.max(
-          0,
-          Number(
-            req.body.tolDepois ??
-              store.config.tolDepois,
-          ),
-        ),
+        Math.max(0, Number(req.body.tolDepois ?? store.config.tolDepois)),
       ),
 
       inicioControle: String(
-        req.body.inicioControle ||
-          store.config.inicioControle,
+        req.body.inicioControle || store.config.inicioControle,
       ),
     };
 
@@ -1092,76 +900,53 @@ routes.put(
   async (req, res) => {
     const store = await readStore();
 
-    const student = store.alunos.find(
-      (item) => item.id === req.params.id,
-    );
+    const student = store.alunos.find((item) => item.id === req.params.id);
 
     if (!student)
       return res.status(404).json({
         error: "Aluno não encontrado.",
       });
 
-    const name = String(
-      req.body.nome ?? student.nome,
-    )
+    const name = String(req.body.nome ?? student.nome)
       .trim()
       .replace(/\s+/g, " ");
 
-    const phone = String(
-      req.body.tel ??
-        student.tel ??
-        "",
-    )
+    const phone = String(req.body.tel ?? student.tel ?? "")
       .replace(/\D/g, "")
       .slice(0, 15);
 
-    const cpf = onlyDigits(
-      req.body.cpf,
-    );
+    const cpf = onlyDigits(req.body.cpf);
 
     if (name.length < 3)
       return res.status(422).json({
-        error:
-          "Informe o nome completo do aluno.",
+        error: "Informe o nome completo do aluno.",
       });
 
-    const normalizedName =
-      name.toLocaleLowerCase();
+    const normalizedName = name.toLocaleLowerCase();
 
     if (
       store.alunos.some(
         (item) =>
           item.id !== student.id &&
           item.ativo !== false &&
-          item.nome
-            .toLocaleLowerCase() ===
-            normalizedName,
+          item.nome.toLocaleLowerCase() === normalizedName,
       )
     )
       return res.status(409).json({
-        error:
-          "Já existe um aluno ativo com esse nome.",
+        error: "Já existe um aluno ativo com esse nome.",
       });
 
-    const storeClassIds = new Set(
-      store.turmas.map(
-        (item) => item.id,
-      ),
-    );
+    const storeClassIds = new Set(store.turmas.map((item) => item.id));
 
-    const turmaIds =
-      Array.isArray(req.body.turmaIds)
-        ? req.body.turmaIds.filter(
-            (id) =>
-              typeof id === "string" &&
-              storeClassIds.has(id),
-          )
-        : student.turmaIds || [];
+    const turmaIds = Array.isArray(req.body.turmaIds)
+      ? req.body.turmaIds.filter(
+          (id) => typeof id === "string" && storeClassIds.has(id),
+        )
+      : student.turmaIds || [];
 
     if (!turmaIds.length)
       return res.status(422).json({
-        error:
-          "Selecione pelo menos uma turma.",
+        error: "Selecione pelo menos uma turma.",
       });
 
     /*
@@ -1180,14 +965,11 @@ routes.put(
 
       if (
         store.alunos.some(
-          (item) =>
-            item.id !== student.id &&
-            matchesCpf(item, cpf),
+          (item) => item.id !== student.id && matchesCpf(item, cpf),
         )
       )
         return res.status(409).json({
-          error:
-            "Este CPF já está vinculado a outro aluno.",
+          error: "Este CPF já está vinculado a outro aluno.",
         });
 
       student.cpfHash = hashCpf(cpf);
@@ -1199,15 +981,9 @@ routes.put(
     student.tel = phone;
     student.turmaIds = turmaIds;
 
-    student.desde = String(
-      req.body.desde ||
-        student.desde ||
-        dateKey(now()),
-    );
+    student.desde = String(req.body.desde || student.desde || dateKey(now()));
 
-    if (
-      typeof req.body.ativo === "boolean"
-    ) {
+    if (typeof req.body.ativo === "boolean") {
       student.ativo = req.body.ativo;
     }
 
@@ -1238,14 +1014,11 @@ routes.delete(
   async (req, res) => {
     const store = await readStore();
 
-    const student = store.alunos.find(
-      (item) => item.id === req.params.id,
-    );
+    const student = store.alunos.find((item) => item.id === req.params.id);
 
     if (!student)
       return res.status(404).json({
-        error:
-          "Aluno não encontrado.",
+        error: "Aluno não encontrado.",
       });
 
     student.cpfHash = "";
@@ -1274,14 +1047,11 @@ routes.delete(
   async (req, res) => {
     const store = await readStore();
 
-    const student = store.alunos.find(
-      (item) => item.id === req.params.id,
-    );
+    const student = store.alunos.find((item) => item.id === req.params.id);
 
     if (!student)
       return res.status(404).json({
-        error:
-          "Aluno não encontrado.",
+        error: "Aluno não encontrado.",
       });
 
     student.ativo = false;
@@ -1294,12 +1064,8 @@ routes.delete(
   },
 );
 
-routes.get(
-  "/api/admin/backup",
-  adminLimiter,
-  requireAdmin,
-  async (_req, res) =>
-    res.json(await readStore()),
+routes.get("/api/admin/backup", adminLimiter, requireAdmin, async (_req, res) =>
+  res.json(await readStore()),
 );
 
 routes.post(
@@ -1315,8 +1081,7 @@ routes.post(
       current.checkins.length
     )
       return res.status(409).json({
-        error:
-          "A importação inicial exige uma base vazia.",
+        error: "A importação inicial exige uma base vazia.",
       });
 
     const seed = req.body;
@@ -1329,122 +1094,86 @@ routes.post(
       seed.turmas.length > 1000
     )
       return res.status(422).json({
-        error:
-          "Formato de importação inválido.",
+        error: "Formato de importação inválido.",
       });
 
     const safeText = (value) =>
-      typeof value === "string" &&
-      value.length <= 200;
+      typeof value === "string" && value.length <= 200;
 
-    const validHash = (value) =>
-      !value ||
-      /^[a-f0-9]{64}$/.test(value);
+    const validHash = (value) => !value || /^[a-f0-9]{64}$/.test(value);
 
     if (
       seed.alunos.some(
         (item) =>
           !safeText(item.id) ||
           !safeText(item.nome) ||
-          !Array.isArray(
-            item.turmaIds,
-          ) ||
+          !Array.isArray(item.turmaIds) ||
           !validHash(item.cpfHash),
       ) ||
       seed.turmas.some(
         (item) =>
           !safeText(item.id) ||
           !safeText(item.nome) ||
-          !Array.isArray(
-            item.horarios,
-          ),
+          !Array.isArray(item.horarios),
       )
     )
       return res.status(422).json({
-        error:
-          "Dados de importação inválidos.",
+        error: "Dados de importação inválidos.",
       });
 
     const imported = {
       config: {
         escola: String(
-          seed.config.escola ||
-            "Instituto Tecnológico Tesla",
+          seed.config.escola || "Instituto Tecnológico Tesla",
         ).slice(0, 120),
 
         minimo: 75,
         tolAntes: 30,
         tolDepois: 60,
-        inicioControle:
-          dateKey(now()),
+        inicioControle: dateKey(now()),
       },
 
-      turmas: seed.turmas.map(
-        (item) => ({
-          id: item.id,
-          nome: item.nome,
-          curso: String(
-            item.curso || "",
-          ),
-          professor: String(
-            item.professor || "",
-          ),
-          sala: String(
-            item.sala || "",
-          ),
-          inicio: item.inicio || "",
-          fim: item.fim || "",
-          horarios:
-            item.horarios,
-          ativa:
-            item.ativa !== false,
-          canceladas: [],
-        }),
-      ),
+      turmas: seed.turmas.map((item) => ({
+        id: item.id,
+        nome: item.nome,
+        curso: String(item.curso || ""),
+        professor: String(item.professor || ""),
+        sala: String(item.sala || ""),
+        inicio: item.inicio || "",
+        fim: item.fim || "",
+        horarios: item.horarios,
+        ativa: item.ativa !== false,
+        canceladas: [],
+      })),
 
-      alunos: seed.alunos.map(
-        (item) => ({
-          id: item.id,
-          nome: item.nome,
-          tel: String(
-            item.tel || "",
-          ),
-          turmaIds:
-            item.turmaIds,
-          ativo:
-            item.ativo !== false,
-          desde:
-            item.desde || "",
-          cpfHash:
-            item.cpfHash || "",
-          vinculo:
-            item.vinculo || "",
-        }),
-      ),
+      alunos: seed.alunos.map((item) => ({
+        id: item.id,
+        nome: item.nome,
+        tel: String(item.tel || ""),
+        turmaIds: item.turmaIds,
+        ativo: item.ativo !== false,
+        desde: item.desde || "",
+        cpfHash: item.cpfHash || "",
+        vinculo: item.vinculo || "",
+      })),
 
       checkins: [],
       professores: [],
     };
 
-    imported.professores =
-      teachersFromClasses(
-        imported.turmas,
-      );
+    imported.professores = teachersFromClasses(imported.turmas);
 
-    imported.turmas =
-      connectClassesToTeachers(
-        imported.turmas,
-        imported.professores,
-      );
+    imported.turmas = connectClassesToTeachers(
+      imported.turmas,
+      imported.professores,
+    );
 
     await writeStore(imported);
 
     res.status(201).json({
       ok: true,
-      alunos:
-        imported.alunos.length,
-      turmas:
-        imported.turmas.length,
+      alunos: imported.alunos.length,
+      turmas: imported.turmas.length,
     });
   },
 );
@@ -1463,41 +1192,35 @@ app.use("/api", (_req, res) =>
   }),
 );
 
-app.use(
-  (error, _req, res, _next) => {
-    if (res.headersSent) return;
+app.use((error, req, res, _next) => {
+  if (res.headersSent) return;
 
-    const status =
-      error.type ===
-      "entity.parse.failed"
-        ? 400
-        : error.type ===
-            "entity.too.large"
-          ? 413
-          : 500;
+  const status =
+    error.type === "entity.parse.failed"
+      ? 400
+      : error.type === "entity.too.large"
+        ? 413
+        : 500;
 
-    console.error(
-      "Falha de operação",
-      status,
-    );
+  const code = databaseErrorCode(error);
+  console.error("Falha de operação", {
+    path: req.path,
+    status,
+    category: code,
+    code: error?.code || "UNKNOWN",
+  });
 
-    res.status(status).send({
-      error:
-        status === 500
-          ? "Serviço temporariamente indisponível. Tente novamente."
-          : "Requisição inválida.",
-    });
-  },
-);
+  res.status(status).json({
+    error:
+      status === 500
+        ? "Serviço temporariamente indisponível. Tente novamente."
+        : "Requisição inválida.",
+    ...(status === 500 ? { code } : {}),
+  });
+});
 
 routes.get("*", (_req, res) =>
-  res.sendFile(
-    path.join(
-      __dirname,
-      "public",
-      "index.html",
-    ),
-  ),
+  res.sendFile(path.join(__dirname, "public", "index.html")),
 );
 
 export default app;
@@ -1512,18 +1235,14 @@ if (isDirectExecution) {
     .then(() => {
       startSheetSync();
 
-      const listener = app.listen(
-        port,
-        () =>
-          console.log(
-            `Presença Tesla em http://localhost:${listener.address().port}`,
-          ),
+      const listener = app.listen(port, () =>
+        console.log(
+          `Presença Tesla em http://localhost:${listener.address().port}`,
+        ),
       );
     })
     .catch((error) => {
-      console.error(
-        "Não foi possível iniciar o banco de dados.",
-      );
+      console.error("Não foi possível iniciar o banco de dados.");
       console.error(error);
       process.exit(1);
     });

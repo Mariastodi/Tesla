@@ -5,14 +5,78 @@ import pg from "pg";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { rootDir, dataDir, runtimeFile, production } from "./config.js";
 import { teachersFromClasses, connectClassesToTeachers } from "./domain.js";
-export const pool = process.env.DATABASE_URL
+
+export function databaseErrorCode(error) {
+  const code = String(error?.code || "");
+  if (["28P01", "28000"].includes(code)) return "DB_AUTHENTICATION_FAILED";
+  if (code === "3D000") return "DB_DATABASE_NOT_FOUND";
+  if (code === "42P01") return "DB_TABLE_NOT_FOUND";
+  if (code === "42703") return "DB_SCHEMA_MISMATCH";
+  if (code === "42501") return "DB_PERMISSION_DENIED";
+  if (
+    [
+      "ENOTFOUND",
+      "EAI_AGAIN",
+      "ECONNREFUSED",
+      "ECONNRESET",
+      "ETIMEDOUT",
+      "EHOSTUNREACH",
+      "57P03",
+    ].includes(code)
+  )
+    return "DB_CONNECTION_FAILED";
+  if (code === "53300") return "DB_CONNECTION_LIMIT";
+  if (code === "DATABASE_URL_INVALID") return "DB_URL_INVALID";
+  if (code === "DATABASE_URL_MISSING") return "DB_URL_MISSING";
+  if (code === "PRODUCTION_SECRETS_MISSING")
+    return "PRODUCTION_SECRETS_MISSING";
+  return "INTERNAL_ERROR";
+}
+
+function databaseConnectionString() {
+  const value = process.env.DATABASE_URL;
+  if (!value) return null;
+  let url;
+  try {
+    url = new URL(value);
+  } catch {
+    throw Object.assign(new Error("Invalid DATABASE_URL"), {
+      code: "DATABASE_URL_INVALID",
+    });
+  }
+  if (!["postgres:", "postgresql:"].includes(url.protocol) || !url.hostname)
+    throw Object.assign(new Error("Invalid DATABASE_URL"), {
+      code: "DATABASE_URL_INVALID",
+    });
+  // Supabase's shared transaction pooler requires TLS. Do not permit a
+  // production DATABASE_URL to silently fall back to an unencrypted socket.
+  if (
+    !["require", "verify-ca", "verify-full"].includes(
+      url.searchParams.get("sslmode"),
+    )
+  )
+    url.searchParams.set("sslmode", "require");
+  return url.toString();
+}
+
+const connectionString = databaseConnectionString();
+export const pool = connectionString
   ? new pg.Pool({
-      connectionString: process.env.DATABASE_URL,
-      max: 5,
-      connectionTimeoutMillis: 15000,
-      idleTimeoutMillis: 30000,
+      connectionString,
+      // A Vercel instance is short lived; keep its own pool small because
+      // Supabase already pools serverless connections at the transaction layer.
+      max: 1,
+      connectionTimeoutMillis: 10000,
+      idleTimeoutMillis: 10000,
+      keepAlive: true,
     })
   : null;
+pool?.on("error", (error) => {
+  console.error("PostgreSQL idle connection error", {
+    category: databaseErrorCode(error),
+    code: error?.code || "UNKNOWN",
+  });
+});
 export const transaction = new AsyncLocalStorage();
 const database = () => transaction.getStore() || pool;
 async function readSeed() {
@@ -97,14 +161,14 @@ async function writeFileStore(store) {
 }
 
 async function setupPostgres() {
-  await pool.query(
-    `CREATE TABLE IF NOT EXISTS app_config (id integer primary key, data jsonb not null); CREATE TABLE IF NOT EXISTS classes (id text primary key, data jsonb not null); CREATE TABLE IF NOT EXISTS teachers (id text primary key, data jsonb not null); CREATE TABLE IF NOT EXISTS students (id text primary key, data jsonb not null); CREATE TABLE IF NOT EXISTS checkins (id text primary key, data jsonb not null, created_at timestamptz not null default now())`,
-  );
-  const migration = await fs.readFile(
-    path.join(rootDir, "server/migrations/001_teacher_workflow.sql"),
-    "utf8",
-  );
-  await pool.query(migration);
+  const migrationDir = path.join(rootDir, "server/migrations");
+  const migrations = (await fs.readdir(migrationDir))
+    .filter((name) => name.endsWith(".sql"))
+    .sort();
+  for (const name of migrations) {
+    const migration = await fs.readFile(path.join(migrationDir, name), "utf8");
+    await pool.query(migration);
+  }
   const count = await pool.query(
     "SELECT count(*)::int AS count FROM app_config",
   );
@@ -204,6 +268,9 @@ export async function addCheckin(store, checkin) {
 }
 
 export const repositoryReady = pool ? setupPostgres() : Promise.resolve();
+// The rejected promise remains awaitable by requests; this handler also avoids
+// an unhandled-rejection warning before the first request observes it.
+repositoryReady.catch(() => {});
 
 function normalizeWorkflow(store) {
   store.teacherAttendance ||= [];
