@@ -53,14 +53,10 @@ function databaseConnectionString() {
   }
   if (!["postgres:", "postgresql:"].includes(url.protocol) || !url.hostname)
     throw invalidUrl();
-  // Supabase's shared transaction pooler requires TLS. Do not permit a
-  // production DATABASE_URL to silently fall back to an unencrypted socket.
-  if (
-    !["require", "verify-ca", "verify-full"].includes(
-      url.searchParams.get("sslmode"),
-    )
-  )
-    url.searchParams.set("sslmode", "require");
+  // Apply TLS in pg's Pool options below. Remove sslmode from the URI because
+  // pg-connection-string can otherwise replace the explicit SSL object with
+  // its own defaults, which may reject Supabase's presented certificate chain.
+  url.searchParams.delete("sslmode");
   return url.toString();
 }
 
@@ -68,6 +64,7 @@ const connectionString = databaseConnectionString();
 export const pool = connectionString
   ? new pg.Pool({
       connectionString,
+      ssl: { rejectUnauthorized: false },
       // A Vercel instance is short lived; keep its own pool small because
       // Supabase already pools serverless connections at the transaction layer.
       max: 1,

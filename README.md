@@ -36,7 +36,7 @@ O projeto está preparado para a Vercel: o Express é exportado como uma funçã
 
 Configure estas variáveis em **Project → Settings → Environment Variables** para Production (e Preview, se for usar previews):
 
-- `DATABASE_URL`: URI **Transaction pooler** do Supabase (porta `6543`), com `sslmode=require`. Cadastre como variável privada no Vercel para Production (e Preview, se necessário). Nunca use o prefixo `VITE_` nem exponha essa URI no navegador.
+- `DATABASE_URL`: URI **Transaction pooler** do Supabase (porta `6543`). O servidor aplica TLS no `pg.Pool`; a variável fica privada no Vercel para Production (e Preview, se necessário). Nunca use o prefixo `VITE_` nem exponha essa URI no navegador.
 - `ADMIN_PIN_HASH`: hash scrypt de um código de 8 a 128 caracteres.
 - `CPF_SALT`: segredo de pelo menos 32 caracteres. Preserve o valor atual para continuar reconhecendo os CPFs já vinculados.
 - `DEVICE_SECRET`: segredo aleatório longo para assinar a ativação dos tablets.
