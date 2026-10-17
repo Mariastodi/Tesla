@@ -337,10 +337,6 @@ export async function writeStore(store) {
     throw error;
   }
 }
-export async function deleteTeacherRecord(id) {
-  if (pool)
-    await database().query("DELETE FROM teachers WHERE id = $1", [id]);
-}
 export async function deleteStudentRecord(id) {
   if (pool)
     await database().query("DELETE FROM students WHERE id = $1", [id]);

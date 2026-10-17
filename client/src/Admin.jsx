@@ -661,15 +661,24 @@ function CrudTeachers({ data, pin, onData }) {
   async function remove(teacher) {
     if (!window.confirm(`Apagar o professor ${teacher.nome}?`)) return;
     try {
-      await api(`/api/admin/teachers/${teacher.id}`, {
+      const result = await api(`/api/admin/teachers/${teacher.id}`, {
         method: "DELETE",
         headers: { "x-admin-pin": pin },
       });
       onData({
         ...data,
-        professores: data.professores.filter((item) => item.id !== teacher.id),
+        professores: data.professores.map((item) =>
+          item.id === teacher.id ? { ...item, ativo: false } : item,
+        ),
+        turmas: result.turmas || data.turmas,
       });
-      setMessage("Professor apagado.");
+      if (editing?.id === teacher.id) {
+        setEditing(null);
+        setForm({ nome: "", cpf: "" });
+      }
+      setMessage(
+        "Professor inativado. As turmas e substituições existentes foram mantidas.",
+      );
     } catch (error) {
       setMessage(error.message);
     }

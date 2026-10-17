@@ -18,7 +18,6 @@ import {
   readStore,
   writeStore,
   addCheckin,
-  deleteTeacherRecord,
   deleteStudentRecord,
   repositoryReady,
   pool,
@@ -905,27 +904,14 @@ routes.delete(
           "Professor não encontrado.",
       });
 
-    if (
-      store.turmas.some(
-        (item) =>
-          item.professorId === teacher.id &&
-          item.ativa !== false,
-      )
-    )
-      return res.status(409).json({
-        error:
-          "Não é possível apagar um professor ligado a uma turma ativa.",
-      });
-
-    store.professores = store.professores.filter(
-      (item) => item.id !== teacher.id,
-    );
+    teacher.ativo = false;
 
     await writeStore(store);
-    await deleteTeacherRecord(teacher.id);
 
     return res.json({
       ok: true,
+      id: teacher.id,
+      turmas: store.turmas,
     });
   },
 );
