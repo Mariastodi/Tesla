@@ -71,7 +71,7 @@ function FirstAccess({ onSelect, onClose }) {
           signal: controller.signal,
         })
           .then((result) => {
-            setResults(result.students);
+            setResults(Array.isArray(result.students) ? result.students : []);
             setState("ready");
           })
           .catch(() => {
@@ -103,6 +103,12 @@ function FirstAccess({ onSelect, onClose }) {
         />
       </label>
       <div className="student-results" aria-live="polite">
+        {state === "error" && (
+          <p className="connection-notice" role="status">
+            Não foi possível buscar os cadastros agora. Você ainda pode voltar
+            e digitar seu CPF no teclado.
+          </p>
+        )}
         {results.map((student) => (
           <button
             className="student-result"
@@ -366,12 +372,11 @@ function App() {
     run(async () => {
       try {
         if (!deviceReady) {
-          await api("/api/device/activate", {
+          const activation = await api("/api/device/activate", {
             method: "POST",
-            headers: { "x-admin-pin": pin },
-            body: "{}",
+            body: JSON.stringify({ activationCode: pin }),
           });
-          setDeviceReady(true);
+          setDeviceReady(activation.deviceReady !== false);
           reset();
           return;
         }

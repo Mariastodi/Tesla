@@ -120,7 +120,9 @@ const sameSecret = (provided, expected) => {
 
 const requireAdmin = async (req, res, next) => {
   try {
-    if (await verifyPin(req.headers["x-admin-pin"], adminPinHash))
+    const providedPin =
+      req.headers["x-admin-pin"] || req.body?.activationCode;
+    if (await verifyPin(providedPin, adminPinHash))
       return next();
   } catch (error) {
     return next(error);
@@ -173,7 +175,7 @@ routes.post(
       },
     );
 
-    res.json({ ok: true });
+    res.json({ ok: true, deviceReady: true });
   },
 );
 

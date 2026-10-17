@@ -181,6 +181,12 @@ async function writeFileStore(store) {
   return store;
 }
 
+const defaultTeacherWorkflow = {
+  teacherAttendance: [],
+  teacherSubstitutions: [],
+  sheetSync: { revision: 0, syncedRevision: -1 },
+};
+
 async function setupPostgres() {
   const migrationDir = path.join(rootDir, "server/migrations");
   const migrations = (await fs.readdir(migrationDir))
@@ -190,33 +196,39 @@ async function setupPostgres() {
     const migration = await fs.readFile(path.join(migrationDir, name), "utf8");
     await pool.query(migration);
   }
-  const count = await pool.query(
-    "SELECT count(*)::int AS count FROM app_config",
+  const seed = await readSeed();
+  const hasConfig = await pool.query(
+    "SELECT 1 FROM app_config WHERE id = 1",
   );
-  if (count.rows[0].count === 0) {
-    const seed = await readSeed();
-    await pool.query("INSERT INTO app_config (id, data) VALUES (1, $1)", [
-      seed.config,
-    ]);
+  await pool.query(
+    "INSERT INTO app_config (id, data) VALUES (1, $1) ON CONFLICT (id) DO UPDATE SET data = EXCLUDED.data || app_config.data",
+    [seed.config],
+  );
+  if (hasConfig.rowCount === 0) {
     for (const item of seed.turmas)
-      await pool.query("INSERT INTO classes (id, data) VALUES ($1, $2)", [
-        item.id,
-        item,
-      ]);
+      await pool.query(
+        "INSERT INTO classes (id, data) VALUES ($1, $2) ON CONFLICT (id) DO NOTHING",
+        [item.id, item],
+      );
     for (const item of seed.professores)
-      await pool.query("INSERT INTO teachers (id, data) VALUES ($1, $2)", [
-        item.id,
-        item,
-      ]);
+      await pool.query(
+        "INSERT INTO teachers (id, data) VALUES ($1, $2) ON CONFLICT (id) DO NOTHING",
+        [item.id, item],
+      );
     for (const item of seed.alunos)
-      await pool.query("INSERT INTO students (id, data) VALUES ($1, $2)", [
-        item.id,
-        item,
-      ]);
+      await pool.query(
+        "INSERT INTO students (id, data) VALUES ($1, $2) ON CONFLICT (id) DO NOTHING",
+        [item.id, item],
+      );
   }
+  await pool.query(
+    "INSERT INTO teacher_workflow (id, data) VALUES (1, $1) ON CONFLICT (id) DO UPDATE SET data = EXCLUDED.data || teacher_workflow.data",
+    [defaultTeacherWorkflow],
+  );
 }
 export async function readStore() {
   if (!pool) return readFileStore();
+  await repositoryReady;
   const [config, classes, teachers, students, checkins, workflow] =
     await Promise.all([
       database().query("SELECT data FROM app_config WHERE id = 1"),
@@ -230,9 +242,10 @@ export async function readStore() {
   const professores = teachers.rows.length
     ? teachers.rows.map((row) => row.data)
     : teachersFromClasses(rawClasses);
+  const defaults = await readSeed();
   return {
-    ...normalizeWorkflow(workflow.rows[0]?.data || {}),
-    config: config.rows[0]?.data || {},
+    ...normalizeWorkflow(workflow.rows[0]?.data || defaultTeacherWorkflow),
+    config: { ...defaults.config, ...(config.rows[0]?.data || {}) },
     turmas: connectClassesToTeachers(rawClasses, professores),
     professores,
     alunos: students.rows.map((row) => row.data),

@@ -10,6 +10,9 @@
     }
   ],
   "functions": {
+    "api/device/activate.js": {
+      "includeFiles": "server/migrations/**"
+    },
     "api/[...path].js": {
       "includeFiles": "server/migrations/**"
     }

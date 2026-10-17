@@ -16,13 +16,18 @@ export async function api(path, options = {}) {
   }
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
+    const category =
+      response.status === 404 ? "API_ROUTE_NOT_FOUND" : data.code || "HTTP_ERROR";
     console.error("API request failed", {
       path,
       status: response.status,
-      category: data.code || "HTTP_ERROR",
+      category,
     });
     throw new Error(
-      data.error || "Não foi possível concluir. Tente novamente.",
+      data.error ||
+        (response.status === 404
+          ? "Esta função não está publicada. Atualize o site e tente novamente."
+          : "Não foi possível concluir. Tente novamente."),
     );
   }
   return data;
