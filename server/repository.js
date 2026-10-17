@@ -36,18 +36,22 @@ export function databaseErrorCode(error) {
 function databaseConnectionString() {
   const value = process.env.DATABASE_URL;
   if (!value) return null;
+  const invalidUrl = () => {
+    console.error("Invalid PostgreSQL DATABASE_URL", {
+      category: "DB_URL_INVALID",
+    });
+    return Object.assign(new Error("Invalid DATABASE_URL"), {
+      code: "DATABASE_URL_INVALID",
+    });
+  };
   let url;
   try {
     url = new URL(value);
   } catch {
-    throw Object.assign(new Error("Invalid DATABASE_URL"), {
-      code: "DATABASE_URL_INVALID",
-    });
+    throw invalidUrl();
   }
   if (!["postgres:", "postgresql:"].includes(url.protocol) || !url.hostname)
-    throw Object.assign(new Error("Invalid DATABASE_URL"), {
-      code: "DATABASE_URL_INVALID",
-    });
+    throw invalidUrl();
   // Supabase's shared transaction pooler requires TLS. Do not permit a
   // production DATABASE_URL to silently fall back to an unencrypted socket.
   if (
