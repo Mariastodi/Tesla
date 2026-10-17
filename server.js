@@ -184,14 +184,17 @@ app.use("/api/kiosk", (req, res, next) =>
       }),
 );
 
-routes.get("/health", async (_req, res) => {
+const healthCheck = async (_req, res) => {
   try {
     await repositoryReady;
     res.json({ ok: true });
   } catch {
     res.status(503).json({ ok: false });
   }
-});
+};
+
+routes.get("/health", healthCheck);
+routes.get("/api/health", healthCheck);
 
 routes.get("/api/bootstrap", async (req, res) => {
   try {
