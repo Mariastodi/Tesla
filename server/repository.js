@@ -26,6 +26,7 @@ export function databaseErrorCode(error) {
   )
     return "DB_CONNECTION_FAILED";
   if (code === "53300") return "DB_CONNECTION_LIMIT";
+  if (code === "53000") return "DB_RESOURCE_LIMIT";
   if (code === "DATABASE_URL_INVALID") return "DB_URL_INVALID";
   if (code === "DATABASE_URL_MISSING") return "DB_URL_MISSING";
   if (code === "PRODUCTION_SECRETS_MISSING")
