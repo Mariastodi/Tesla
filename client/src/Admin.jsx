@@ -344,7 +344,7 @@ function StudentRegister({ data, pin, onData }) {
   const remove = async (student) => {
     if (
       !window.confirm(
-        `Desativar o aluno ${student.nome}? O histórico de presença será mantido.`,
+        `Apagar o aluno ${student.nome}? O histórico de presença será mantido.`,
       )
     ) {
       return;
@@ -359,11 +359,9 @@ function StudentRegister({ data, pin, onData }) {
       if (editing?.id === student.id) cancelEditing();
       onData({
         ...data,
-        alunos: data.alunos.map((item) =>
-          item.id === student.id ? { ...item, ativo: false } : item,
-        ),
+        alunos: data.alunos.filter((item) => item.id !== student.id),
       });
-      setMessage("Aluno desativado. O histórico foi mantido.");
+      setMessage("Aluno apagado. O histórico de presença foi mantido.");
     } catch (error) {
       setMessage(error.message);
     }
@@ -644,7 +642,7 @@ function CrudTeachers({ data, pin, onData }) {
         },
       );
       const next = editing
-        ? teachers.map((item) =>
+        ? data.professores.map((item) =>
             item.id === editing.id ? result.professor : item,
           )
         : [...data.professores, result.professor];
@@ -669,9 +667,7 @@ function CrudTeachers({ data, pin, onData }) {
       });
       onData({
         ...data,
-        professores: data.professores.map((item) =>
-          item.id === teacher.id ? { ...item, ativo: false } : item,
-        ),
+        professores: data.professores.filter((item) => item.id !== teacher.id),
       });
       setMessage("Professor apagado.");
     } catch (error) {

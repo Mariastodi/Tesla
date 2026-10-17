@@ -18,6 +18,8 @@ import {
   readStore,
   writeStore,
   addCheckin,
+  deleteTeacherRecord,
+  deleteStudentRecord,
   repositoryReady,
   pool,
   databaseErrorCode,
@@ -892,9 +894,12 @@ routes.delete(
           "Não é possível apagar um professor ligado a uma turma ativa.",
       });
 
-    teacher.ativo = false;
+    store.professores = store.professores.filter(
+      (item) => item.id !== teacher.id,
+    );
 
     await writeStore(store);
+    await deleteTeacherRecord(teacher.id);
 
     return res.json({
       ok: true,
@@ -1091,11 +1096,10 @@ routes.put(
  * Desvincular CPF:
  * DELETE /api/admin/students/:id/cpf
  *
- * Desativar aluno:
+ * Excluir aluno:
  * DELETE /api/admin/students/:id
  *
- * O aluno não é apagado fisicamente.
- * O histórico de presença permanece.
+ * O cadastro é removido; o histórico de presença permanece independente.
  */
 
 routes.put(
@@ -1273,13 +1277,6 @@ routes.delete(
   },
 );
 
-/*
- * "Apagar" aluno:
- * faz exclusão lógica.
- *
- * O cadastro permanece no banco para
- * preservar histórico e relacionamentos.
- */
 routes.delete(
   "/api/admin/students/:id",
   adminLimiter,
@@ -1297,12 +1294,16 @@ routes.delete(
           "Aluno não encontrado.",
       });
 
-    student.ativo = false;
+    store.alunos = store.alunos.filter(
+      (item) => item.id !== student.id,
+    );
 
     await writeStore(store);
+    await deleteStudentRecord(student.id);
 
     return res.json({
       ok: true,
+      id: student.id,
     });
   },
 );
