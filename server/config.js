@@ -19,7 +19,8 @@ if (configuredHash && !validPinHash(configuredHash))
   );
 export const adminPinHash =
   configuredHash || (legacyPin ? await hashPin(legacyPin) : "");
-export const production = process.env.NODE_ENV === "production";
+export const production =
+  process.env.NODE_ENV === "production" || process.env.VERCEL === "1";
 if (
   production &&
   (!process.env.DATABASE_URL ||

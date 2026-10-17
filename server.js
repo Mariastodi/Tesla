@@ -5,6 +5,7 @@ import express from "express";
 import { verifyPin } from "./server/admin-auth.js";
 import crypto from "node:crypto";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import helmet from "helmet";
 import rateLimit from "express-rate-limit";
 import {
@@ -1492,22 +1493,31 @@ routes.get("*", (_req, res) =>
   ),
 );
 
-repositoryReady
-  .then(() => {
-    startSheetSync();
+export default app;
 
-    const listener = app.listen(
-      port,
-      () =>
-        console.log(
-          `Presença Tesla em http://localhost:${listener.address().port}`,
-        ),
-    );
-  })
-  .catch((error) => {
-    console.error(
-      "Não foi possível iniciar o banco de dados.",
-    );
-    console.error(error);
-    process.exit(1);
-  });
+const isDirectExecution =
+  process.env.VERCEL !== "1" &&
+  process.argv[1] &&
+  path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+
+if (isDirectExecution) {
+  repositoryReady
+    .then(() => {
+      startSheetSync();
+
+      const listener = app.listen(
+        port,
+        () =>
+          console.log(
+            `Presença Tesla em http://localhost:${listener.address().port}`,
+          ),
+      );
+    })
+    .catch((error) => {
+      console.error(
+        "Não foi possível iniciar o banco de dados.",
+      );
+      console.error(error);
+      process.exit(1);
+    });
+}

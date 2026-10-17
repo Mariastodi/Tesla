@@ -32,7 +32,20 @@ Os testes usam arquivos temporários e alunos fictícios, sem acessar a base da 
 
 ## Hospedagem
 
-O arquivo `render.yaml` configura um serviço Node no plano gratuito. Use PostgreSQL externo persistente; não use arquivos locais para armazenar presença no Render. Configure `DATABASE_URL`, `ADMIN_PIN_HASH` (hash scrypt de um código de 8 a 128 caracteres), `CPF_SALT` (32+ caracteres), `DEVICE_SECRET` e `TRUST_PROXY_HOPS=1`.
+O projeto está preparado para a Vercel: o Express é exportado como uma função e o Vite publica a interface em `public/`. `vercel.json` inclui a migração SQL usada na inicialização do banco. Importe o repositório `Mariastodi/Tesla` no projeto Vercel e mantenha a raiz do projeto no diretório do repositório. O build é `npm run build`.
+
+Configure estas variáveis em **Project → Settings → Environment Variables** para Production (e Preview, se for usar previews):
+
+- `DATABASE_URL`: conexão com PostgreSQL persistente. A Vercel não fornece disco persistente para o estado da aplicação.
+- `ADMIN_PIN_HASH`: hash scrypt de um código de 8 a 128 caracteres.
+- `CPF_SALT`: segredo de pelo menos 32 caracteres. Preserve o valor atual para continuar reconhecendo os CPFs já vinculados.
+- `DEVICE_SECRET`: segredo aleatório longo para assinar a ativação dos tablets.
+- `TRUST_PROXY_HOPS`: `1`.
+- `GOOGLE_APPS_SCRIPT_URL` e `GOOGLE_APPS_SCRIPT_TOKEN`: opcionais, para a integração com a planilha.
+
+Não configure `ADMIN_PIN` quando usar `ADMIN_PIN_HASH`. A Vercel executa o Express sob demanda e não mantém o processo vivo; por isso a sincronização periódica de 60 segundos não roda lá. A sincronização continua disponível pelo botão **Tentar sincronizar** no painel. A sincronização automática periódica requer um agendador externo ou um plano/configuração de cron compatível com a frequência necessária.
+
+Depois de configurar as variáveis, faça o primeiro deploy e confira `/health`. Antes de apontar o tablet para o novo endereço, valide o fluxo de presença e a conexão com o banco. O serviço no Render e o arquivo `render.yaml` podem ser mantidos durante a migração como opção de retorno.
 
 A produção recusa inicializar sem banco e segredos adequados. Guarde `CPF_SALT` com o backup: trocar esse segredo impede reconhecer os CPFs já vinculados. A importação inicial só aceita uma base vazia e exige autenticação da coordenação. Dados pessoais nunca devem ser enviados ao GitHub.
 
@@ -82,12 +95,12 @@ A migração `server/migrations/001_teacher_workflow.sql` roda automaticamente a
 
 Planilha preparada: https://docs.google.com/spreadsheets/d/18dbQrczPuRkr3CG5mTHduJ159YJFGFMv_QLAcuAraf4/edit
 
-Para ativar a integração no Render:
+Para ativar a integração na Vercel:
 
 1. Vincule um projeto do Apps Script à planilha e implemente-o como app da Web. A função `doPost` aceita `source`, `generatedAt`, `tables` e um token secreto, e grava cada tabela na aba correspondente.
-2. Salve `SYNC_TOKEN` nas propriedades do script e configure `GOOGLE_APPS_SCRIPT_URL` e o mesmo valor em `GOOGLE_APPS_SCRIPT_TOKEN` no Environment do Render. Não coloque a URL nem o token no repositório.
+2. Salve `SYNC_TOKEN` nas propriedades do script e configure `GOOGLE_APPS_SCRIPT_URL` e o mesmo valor em `GOOGLE_APPS_SCRIPT_TOKEN` nas variáveis de ambiente da Vercel. Não coloque a URL nem o token no repositório.
 3. Use **Tentar sincronizar** no painel de ponto. Confira o horário da última sincronização e os dados nas abas REGISTROS/RESUMO.
 
 Sem essa URL, o painel informa que a integração não está configurada; o ponto e a exportação Excel continuam funcionando.
 
-O servidor sincroniza periodicamente (60 segundos por padrão). Falhas são persistidas com tentativas posteriores e espera crescente até 15 minutos. A planilha online conserva todos os pontos registrados; o resumo cobre o mês atual até hoje. Somente as seis abas gerenciadas são reescritas: crie outra aba para anotações. CPFs e seus hashes nunca são exportados. O banco é a fonte dos dados; alterações manuais nas abas gerenciadas serão substituídas. Se o Render gratuito estiver suspenso, a sincronização volta quando o serviço acordar.
+No Render, o servidor sincroniza periodicamente (60 segundos por padrão). Na Vercel, use **Tentar sincronizar** para iniciar a sincronização; falhas ficam persistidas para uma tentativa posterior. A planilha online conserva todos os pontos registrados; o resumo cobre o mês atual até hoje. Somente as seis abas gerenciadas são reescritas: crie outra aba para anotações. CPFs e seus hashes nunca são exportados. O banco é a fonte dos dados; alterações manuais nas abas gerenciadas serão substituídas.
