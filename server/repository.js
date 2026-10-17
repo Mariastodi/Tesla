@@ -100,6 +100,54 @@ pool?.on("error", (error) => {
 });
 export const transaction = new AsyncLocalStorage();
 const database = () => transaction.getStore() || pool;
+function jsonObject(value, fallback = null) {
+  let parsed = value;
+  if (typeof parsed === "string") {
+    try {
+      parsed = JSON.parse(parsed);
+    } catch {
+      return fallback;
+    }
+  }
+  return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+    ? parsed
+    : fallback;
+}
+function jsonRecords(result, includeId = false) {
+  const rows = Array.isArray(result?.rows) ? result.rows : [];
+  return rows
+    .map((row) => {
+      const record = jsonObject(row?.data);
+      if (!record) return null;
+      return includeId && record.id == null && row.id != null
+        ? { ...record, id: row.id }
+        : record;
+    })
+    .filter(Boolean);
+}
+function normalizeStore(store = {}) {
+  const config = jsonObject(store.config, {});
+  const turmas = Array.isArray(store.turmas)
+    ? store.turmas.map((item) => jsonObject(item)).filter(Boolean)
+    : [];
+  let professores = Array.isArray(store.professores)
+    ? store.professores.map((item) => jsonObject(item)).filter(Boolean)
+    : [];
+  if (!professores.length) professores = teachersFromClasses(turmas);
+  const workflow = normalizeWorkflow(jsonObject(store, {}));
+  return {
+    ...workflow,
+    config,
+    turmas: connectClassesToTeachers(turmas, professores),
+    professores,
+    alunos: Array.isArray(store.alunos)
+      ? store.alunos.map((item) => jsonObject(item)).filter(Boolean)
+      : [],
+    checkins: Array.isArray(store.checkins)
+      ? store.checkins.map((item) => jsonObject(item)).filter(Boolean)
+      : [],
+  };
+}
 async function readSeed() {
   if (production)
     return {
@@ -227,7 +275,7 @@ async function setupPostgres() {
   );
 }
 export async function readStore() {
-  if (!pool) return readFileStore();
+  if (!pool) return normalizeStore(await readFileStore());
   await repositoryReady;
   const [config, classes, teachers, students, checkins, workflow] =
     await Promise.all([
@@ -238,19 +286,23 @@ export async function readStore() {
       database().query("SELECT data FROM checkins ORDER BY created_at DESC"),
       database().query("SELECT data FROM teacher_workflow WHERE id = 1"),
     ]);
-  const rawClasses = classes.rows.map((row) => row.data);
-  const professores = teachers.rows.length
-    ? teachers.rows.map((row) => row.data)
+  const rawClasses = jsonRecords(classes, true);
+  const storedTeachers = jsonRecords(teachers, true);
+  const professores = storedTeachers.length
+    ? storedTeachers
     : teachersFromClasses(rawClasses);
   const defaults = await readSeed();
-  return {
-    ...normalizeWorkflow(workflow.rows[0]?.data || defaultTeacherWorkflow),
-    config: { ...defaults.config, ...(config.rows[0]?.data || {}) },
+  return normalizeStore({
+    ...jsonObject(workflow?.rows?.[0]?.data, defaultTeacherWorkflow),
+    config: {
+      ...jsonObject(defaults.config, {}),
+      ...jsonObject(config?.rows?.[0]?.data, {}),
+    },
     turmas: connectClassesToTeachers(rawClasses, professores),
     professores,
-    alunos: students.rows.map((row) => row.data),
-    checkins: checkins.rows.map((row) => row.data),
-  };
+    alunos: jsonRecords(students, true),
+    checkins: jsonRecords(checkins),
+  });
 }
 export async function writeStore(store) {
   normalizeWorkflow(store);

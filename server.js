@@ -518,22 +518,45 @@ routes.get(
   adminLimiter,
   requireAdmin,
   async (_req, res) => {
-    const store = await readStore();
+    try {
+      const store = await readStore();
+      const safeStore = {
+        ...store,
+        config: store?.config || {},
+        turmas: Array.isArray(store?.turmas) ? store.turmas : [],
+        professores: Array.isArray(store?.professores)
+          ? store.professores
+          : [],
+        alunos: Array.isArray(store?.alunos) ? store.alunos : [],
+        checkins: Array.isArray(store?.checkins) ? store.checkins : [],
+      };
 
-    res.json({
-      config: store.config,
-      turmas: store.turmas,
-
-      professores: (
-        store.professores || []
-      ).map(publicTeacher),
-
-      alunos: store.alunos.map(publicStudent),
-
-      checkins: store.checkins,
-
-      attendance: attendanceReport(store),
-    });
+      return res.json({
+        config: safeStore.config,
+        turmas: safeStore.turmas,
+        professores: safeStore.professores.map(publicTeacher),
+        alunos: safeStore.alunos.map(publicStudent),
+        checkins: safeStore.checkins,
+        attendance: attendanceReport(safeStore),
+      });
+    } catch (error) {
+      const code = databaseErrorCode(error);
+      console.error("Falha ao carregar painel da coordenação", {
+        category: code,
+        code: error?.code || "UNKNOWN",
+        diagnostic: databaseErrorDiagnostic(error),
+      });
+      return res.status(503).json({
+        error: "Não foi possível carregar os dados da coordenação.",
+        code,
+        config: {},
+        turmas: [],
+        professores: [],
+        alunos: [],
+        checkins: [],
+        attendance: [],
+      });
+    }
   },
 );
 
