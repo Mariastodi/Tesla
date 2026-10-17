@@ -215,7 +215,11 @@ routes.get("/api/bootstrap", async (req, res) => {
 
       now: now().toISOString(),
     });
-  } catch {
+  } catch (error) {
+    console.error(
+      "Falha ao carregar bootstrap",
+      error.code || error.name || "erro desconhecido",
+    );
     res.status(500).json({
       error: "Não foi possível carregar o sistema.",
     });
