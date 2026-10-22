@@ -39,6 +39,7 @@ import {
   teachersFromClasses,
   connectClassesToTeachers,
   openSessions,
+  sessionsForDate,
   attendanceReport,
 } from "./server/domain.js";
 
@@ -536,6 +537,7 @@ routes.get(
         professores: safeStore.professores.map(publicTeacher),
         alunos: safeStore.alunos.map(publicStudent),
         checkins: safeStore.checkins,
+        sessoesHoje: sessionsForDate(safeStore),
         attendance: attendanceReport(safeStore),
       });
     } catch (error) {

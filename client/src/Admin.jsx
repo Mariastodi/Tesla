@@ -99,6 +99,29 @@ function Today({ data }) {
       <Panel title="Registros recentes">
         <CheckinTable items={data.checkins.slice(0, 25)} />
       </Panel>
+      <Panel title="Aulas de hoje">
+        {(data.sessoesHoje || []).length ? (
+          <Table headers={["Horário", "Turma", "Professor", "Presentes"]}>
+            {(data.sessoesHoje || []).map((session) => {
+              const presentCount = new Set(
+                data.checkins
+                  .filter((item) => item.sessaoId === session.id)
+                  .map((item) => item.alunoId),
+              ).size;
+              return (
+                <tr key={session.id}>
+                  <td>{session.inicio}–{session.fim}</td>
+                  <td>{session.turma?.nome || session.turmaId}</td>
+                  <td>{session.turma?.professor || "—"}</td>
+                  <td>{presentCount}</td>
+                </tr>
+              );
+            })}
+          </Table>
+        ) : (
+          <p>Nenhuma aula prevista para hoje na grade cadastrada.</p>
+        )}
+      </Panel>
     </>
   );
 }

@@ -98,6 +98,19 @@ export const sessionFrom = (classItem, schedule, date = dateKey(now())) => ({
   fim: schedule.fim,
   turma: classItem,
 });
+export const sessionsForDate = (store, date = dateKey(now())) => {
+  const day = new Date(`${date}T12:00:00`);
+  const weekday = day.getDay();
+  return store.turmas.flatMap((classItem) => {
+    if (classItem.ativa === false || !classItem.horarios?.length) return [];
+    if (classItem.inicio && classItem.inicio > date) return [];
+    if (classItem.fim && classItem.fim < date) return [];
+    return classItem.horarios
+      .filter((schedule) => Number(schedule.dia) === weekday)
+      .map((schedule) => sessionFrom(classItem, schedule, date))
+      .filter((session) => !(classItem.canceladas || []).includes(session.id));
+  }).sort((a, b) => a.inicio.localeCompare(b.inicio));
+};
 export const openSessions = (store) => {
   const current = now();
   const weekday = current.getDay();
